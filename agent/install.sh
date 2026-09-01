@@ -8,19 +8,24 @@
 # TUI inspired by https://pi.dev/install.sh — spinner when TTY, silent otherwise.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/USER/pi-config/main/agent/install.sh | sh
-#   ./install.sh --repo https://github.com/USER/pi-config --branch main
+#   curl -fsSL https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.sh | sh
+#   ./install.sh --repo https://github.com/asterxsk/kiln --branch main
 #   ./install.sh --target ~/.pi/agent --yes
 #   ./install.sh --local  # force local checkout, skip clone
 #
-# Safe to re-run. Existing settings.json is never overwritten.
+# Safe to re-run. Managed files are force-overwritten; per-user files
+# (settings.json, taste.md, taste/, auth.json, trust.json, sessions/, etc.) are preserved.
 
 set -eu
 
 PI_PACKAGE="@earendil-works/pi-coding-agent"
 NODE_MIN="22.19.0"
 # Overridden at publish time; fallback is used only for local dev
-DEFAULT_REPO="https://github.com/baretread/pi-config"
+DEFAULT_REPO="https://github.com/asterxsk/kiln"
+# Disable credential prompts — public clone should never ask for GitHub login
+export GIT_TERMINAL_PROMPT=0
+export GCM_INTERACTIVE=never 2>/dev/null || true
+export GIT_ASKPASS=echo 2>/dev/null || true
 REPO_URL="${PI_CONFIG_REPO:-}"
 BRANCH="${PI_CONFIG_BRANCH:-main}"
 TARGET="${PI_AGENT_DIR:-}"
@@ -186,7 +191,7 @@ resolve_source_root() {
   CLONED_TMP="$TMP"
   printf "${C_DIM}  → cloning %s (branch %s) → %s${C_RESET}\n" "$REPO" "$BRANCH" "$TMP"
   set +e
-  run_with_spinner "3" "fetching config" git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP"
+  run_with_spinner "3" "fetching config" env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=echo GCM_INTERACTIVE=never git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP"
   CODE=$?
   set -e
   if [ $CODE -ne 0 ]; then
@@ -336,12 +341,22 @@ else
       cp -f "$SOURCE_ROOT/$f" "$TARGET_DIR/$f" 2>/dev/null && COPIED=$((COPIED+1)) || printf "${C_YELLOW}  ⚠ copy %s failed${C_RESET}\n" "$f"
     fi
   done
-  # settings.json: create from example if missing, never overwrite
+  # per-user files: never overwrite — create from example if missing, otherwise keep
+  # settings.json
   if [ ! -f "$TARGET_DIR/settings.json" ] && [ -f "$TARGET_DIR/example-settings.json" ]; then
     cp "$TARGET_DIR/example-settings.json" "$TARGET_DIR/settings.json" 2>/dev/null && printf "${C_DIM}  created settings.json from example-settings.json${C_RESET}\n" || true
   elif [ -f "$TARGET_DIR/settings.json" ]; then
     printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
   fi
+  # taste.md / taste/ — user-specific, preserve if exists
+  for _preserve in taste.md taste taste.json; do
+    if [ -f "$TARGET_DIR/$_preserve" ] || [ -d "$TARGET_DIR/$_preserve" ]; then
+      printf "${C_DIM}  kept existing %s${C_RESET}\n" "$_preserve"
+    elif [ -e "$SOURCE_ROOT/$_preserve" ]; then
+      cp -R "$SOURCE_ROOT/$_preserve" "$TARGET_DIR/$_preserve" 2>/dev/null || true
+    fi
+  done
+  # auth.json / trust.json / sessions etc. are never shipped in kiln, so no copy needed; they remain untouched
 
   # extensions — full sync (set +e so one bad copy doesn't abort)
   if [ -d "$SOURCE_ROOT/extensions" ]; then
