@@ -204,8 +204,11 @@ function Resolve-SourceRoot {
     }
     if ($Local) { throw "Local checkout not found (tried: $($roots -join ', '))" }
   }
-  # Clone to temp
-  $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pi-config-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
+  # Clone to ~/.pi/temp — simple git clone, no account required, then copy agent folder
+  $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+  $tmp = Join-Path $homeDir ".pi/temp"
+  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+  New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   Write-Line "${cdim}  → cloning $Repo (branch $Branch) → $tmp${creset}"
   $env:GIT_TERMINAL_PROMPT = "0"; $env:GIT_ASKPASS = "echo"; $env:GCM_INTERACTIVE = "never"
   $code = Invoke-NativeWithSpinner -Step "3" -Label "fetching config" -FilePath "git" -Args @("clone","--depth","1","--branch",$Branch,$Repo,$tmp)
@@ -337,6 +340,13 @@ try {
   } elseif (Test-Path $settings) {
     Write-Line "${cdim}  kept existing settings.json${creset}"
   }
+  # ensure Pi extensions (forge + context) are registered — merge into existing settings.json
+  if ((Test-Path $settings) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+    try {
+      $patch = "const fs=require('fs');const p=process.argv[1];try{let j=JSON.parse(fs.readFileSync(p,'utf8'));let need=['npm:pi-context-usage','npm:@baretread/pi-forge'];j.packages=j.packages||[];let c=false;for(let pkg of need){if(!j.packages.includes(pkg)){j.packages.push(pkg);c=true}}if(c){fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('  patched settings.json packages -> forge + context') } }catch(e){}"
+      node -e $patch $settings 2>$null | ForEach-Object { Write-Line "${cdim}  $_${creset}" }
+    } catch {}
+  }
   # taste.md / taste/ — user-specific, preserve if exists
   foreach ($preserve in @("taste.md","taste","taste.json")) {
     $p = Join-Path $targetDir $preserve
@@ -379,6 +389,14 @@ try {
   }
 
   Write-Line " ${cgreen}✔${creset} ${cdim}[3/4]${creset} custom config ${cdim}— $copied items → $targetDir${creset}"
+  # cleanup cloned temp — per spec: clone into ~/.pi/temp, copy agent, delete temp
+  if ($script:ClonedTmp -and (Test-Path $script:ClonedTmp)) {
+    $expected = Join-Path $homeDir ".pi/temp"
+    if ($script:ClonedTmp -eq $expected) {
+      Remove-Item $script:ClonedTmp -Recurse -Force -ErrorAction SilentlyContinue
+      $script:ClonedTmp = $null
+    }
+  }
 } catch {
   Write-Line " ${cred}✖${creset} ${cdim}[3/4]${creset} custom config ${cred}failed:${creset} $($_.Exception.Message)"
   Write-Line "    ${cdim}$($_.ScriptStackTrace)${creset}"

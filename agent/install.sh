@@ -181,13 +181,10 @@ resolve_source_root() {
         ;;
     esac
   fi
-  # Clone to temp
-  if command -v mktemp >/dev/null 2>&1; then
-    TMP="$(mktemp -d "${TMPDIR:-/tmp}/pi-config-XXXXXX" 2>/dev/null || echo "${TMPDIR:-/tmp}/pi-config-$$")"
-  else
-    TMP="${TMPDIR:-/tmp}/pi-config-$$"
-    mkdir -p "$TMP"
-  fi
+  # Clone to ~/.pi/temp — simple git clone, no account required, then copy agent folder
+  TMP="$HOME/.pi/temp"
+  rm -rf "$TMP" 2>/dev/null || true
+  mkdir -p "$HOME/.pi" 2>/dev/null || true
   CLONED_TMP="$TMP"
   printf "${C_DIM}  → cloning %s (branch %s) → %s${C_RESET}\n" "$REPO" "$BRANCH" "$TMP" >&2
   set +e
@@ -363,6 +360,10 @@ else
   elif [ -f "$TARGET_DIR/settings.json" ]; then
     printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
   fi
+  # ensure Pi extensions (forge + context) are registered — merge into existing settings.json
+  if [ -f "$TARGET_DIR/settings.json" ] && command -v node >/dev/null 2>&1; then
+    node -e "const fs=require('fs');const p=process.argv[1];try{let j=JSON.parse(fs.readFileSync(p,'utf8'));let need=['npm:pi-context-usage','npm:@baretread/pi-forge'];j.packages=j.packages||[];let c=false;for(let pkg of need){if(!j.packages.includes(pkg)){j.packages.push(pkg);c=true}}if(c){fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('  patched settings.json packages → forge + context') } }catch(e){}" "$TARGET_DIR/settings.json" 2>/dev/null || true
+  fi
   # taste.md / taste/ — user-specific, preserve if exists
   for _preserve in taste.md taste taste.json; do
     if [ -f "$TARGET_DIR/$_preserve" ] || [ -d "$TARGET_DIR/$_preserve" ]; then
@@ -409,6 +410,11 @@ else
   set -e
 
   printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[3/4]${C_RESET} custom config ${C_DIM}— %s items → %s${C_RESET}\n" "$COPIED" "$TARGET_DIR"
+  # cleanup cloned temp — per spec: clone into ~/.pi/temp, copy agent, delete temp
+  if [ -n "$CLONED_TMP" ] && [ -d "$CLONED_TMP" ] && [ "$CLONED_TMP" = "$HOME/.pi/temp" ]; then
+    rm -rf "$CLONED_TMP" 2>/dev/null || true
+    CLONED_TMP=""
+  fi
 fi
 
 # ── [4/4] per-extension deps ──────────────────────────────────────────────
