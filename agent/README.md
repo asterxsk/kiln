@@ -30,11 +30,25 @@ Everything else (`auth.json`, `trust.json`, `sessions/`, `pi-acp/`, `models-stor
 
 ## Install
 
-```bash
-# clone as your pi config
-git clone <this-repo> ~/.pi/agent
+One-line installer (cross-platform TUI — installs/updates pi, the pi packages,
+your config, and each extension's npm deps):
 
-# or copy into existing config
+```powershell
+# Windows (PowerShell)
+powershell -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 | iex"
+```
+
+```bash
+# macOS / Linux (or Git Bash)
+curl -fsSL https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.sh | sh
+```
+
+Manual install (clone as your pi config):
+
+```bash
+git clone https://github.com/asterxsk/kiln.git ~/.pi/agent
+
+# or copy into an existing config
 cp -r agent/extensions ~/.pi/agent/
 cp agent/example-settings.json ~/.pi/agent/settings.json
 cp agent/keybindings.json ~/.pi/agent/keybindings.json
