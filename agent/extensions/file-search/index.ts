@@ -9,7 +9,10 @@
  * before executing, and report a clear error if it failed.
  */
 
-import { NodeServices } from "@effect/platform-node";
+// Deep import: the package root eagerly loads NodeRedis -> ioredis, whose CJS
+// interop (`exports = module.exports = ...`) blows Bun's stack when imported
+// from pi's embedded runtime.
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
   AgentToolResult,
   ExtensionAPI,

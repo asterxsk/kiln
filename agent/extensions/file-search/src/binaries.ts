@@ -12,7 +12,10 @@
  * network. `liveBinaryEnv` is the real implementation.
  */
 
-import { NodeHttpClient, NodeServices } from "@effect/platform-node";
+// Deep imports: see note in ../index.ts — the package root pulls in ioredis,
+// which crashes pi's embedded Bun runtime with "Maximum call stack size exceeded".
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
