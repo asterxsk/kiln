@@ -189,7 +189,7 @@ resolve_source_root() {
     mkdir -p "$TMP"
   fi
   CLONED_TMP="$TMP"
-  printf "${C_DIM}  → cloning %s (branch %s) → %s${C_RESET}\n" "$REPO" "$BRANCH" "$TMP"
+  printf "${C_DIM}  → cloning %s (branch %s) → %s${C_RESET}\n" "$REPO" "$BRANCH" "$TMP" >&2
   set +e
   run_with_spinner "3" "fetching config" env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=echo GCM_INTERACTIVE=never git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP"
   CODE=$?
