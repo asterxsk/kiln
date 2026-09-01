@@ -1,0 +1,7 @@
+{
+  "tui.input.submit": "enter",
+  "tui.input.newLine": "shift+enter",
+  "app.message.followUp": "ctrl+enter",
+  "app.session.toggleSort": [],
+  "app.models.save": "alt+s"
+}

@@ -1,0 +1,42 @@
+{
+  "retry": {
+    "provider": {
+      "timeoutMs": 600000
+    }
+  },
+  "lastChangelogVersion": "0.84.4",
+  "packages": [
+    "npm:pi-context-usage",
+    "npm:@baretread/pi-forge"
+  ],
+  "hideThinkingBlock": true,
+  "quietStartup": true,
+  "doubleEscapeAction": "tree",
+  "theme": "forge",
+  "defaultThinkingLevel": "high",
+  "collapseChangelog": true,
+  "followUpMode": "one-at-a-time",
+  "themes": [
+    "themes"
+  ],
+  "extensions": [
+    "extensions/"
+  ],
+  "editorPaddingX": 1,
+  "treeFilterMode": "no-tools",
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "compaction": {
+    "enabled": true,
+    "keepRecentTokens": 8000,
+    "reserveTokens": 28000
+  },
+  "enableSkillCommands": true,
+  "defaultProjectTrust": "always",
+  "showCacheMissNotices": true,
+  "tuiMode": "fullscreen",
+  "fullscreenScrollbar": "always",
+  "fullscreenExitOutput": "resume-hint",
+  "httpIdleTimeoutMs": 0
+}

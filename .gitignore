@@ -1,0 +1,36 @@
+# ── Pi config repo — publish-safe .gitignore ──────────────────────────────
+# Only these are tracked (see publish allowlist):
+#   agent/extensions, agent/example-settings.json, agent/keybindings.json,
+#   agent/AGENTS.md, agent/README.md
+# Everything below is local/secret/build and MUST NOT be committed.
+
+# Secrets / trust / live session state
+auth.json
+trust.json
+sessions/
+pi-acp/
+models-store.json
+
+# Installed runtime + global bins
+bin/
+node_modules/
+*.log
+
+# Local backups created by the installer
+*.bak/
+*.bak.*
+
+# Windows reserved-device / recursive-copy artifacts
+themes/nul
+themes/.pi/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local overrides
+settings.json
+web-search.json
+taste/

@@ -1,0 +1,13 @@
+{
+  "name": "modelconf",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Per-provider model visibility manager with fuzzy search and bulk glob",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": { "typescript": "^5.6.0" },
+  "allowScripts": {},
+  "dependencies": {}
+}
