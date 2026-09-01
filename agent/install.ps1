@@ -284,8 +284,14 @@ if ($SkipPackages) {
   Write-Line " ${cgreen}✔${creset} ${cdim}[2/4]${creset} pi packages ${cdim}— skipped${creset}"
 } else {
   $label = "installing pi-context-usage + @baretread/pi-forge"
-  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath "npm" -Args @("install","-g","pi-context-usage","@baretread/pi-forge","--no-audit","--no-fund")
+  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath "npm" -Args @("install","-g","pi-context-usage@latest","@baretread/pi-forge@latest","--no-audit","--no-fund")
   if ($code -eq 0) {
+    # Verify global ls (handles mise/nvm prefix quirks)
+    $hasCtx = $null -ne (npm ls -g pi-context-usage 2>$null | Select-String "pi-context-usage")
+    $hasForge = $null -ne (npm ls -g "@baretread/pi-forge" 2>$null | Select-String "pi-forge")
+    if (-not $hasCtx -or -not $hasForge) {
+      Write-Line " ${cyellow}⚠${creset} ${cdim}[2/4]${creset} pi packages installed but not in global ls — continuing${creset}"
+    }
     Write-Line " ${cgreen}✔${creset} ${cdim}[2/4]${creset} pi packages ${cdim}— done${creset}"
   } else {
     Write-Line " ${cyellow}⚠${creset} ${cdim}[2/4]${creset} $label ${cyellow}exit $code — continuing (pi will auto-install)${creset}"
@@ -313,9 +319,14 @@ try {
   }
 
   $copied = 0
+  $isSelfInstall = ($sourceRoot -eq $targetDir)
+  if ($isSelfInstall) { Write-Line "${cdim}  source == target — skipping file copy (self-install)${creset}" }
   foreach ($f in @("AGENTS.md","keybindings.json","example-settings.json","README.md")) {
     $s = Join-Path $sourceRoot $f
-    if (Test-Path $s) { Copy-Item $s (Join-Path $targetDir $f) -Force; $copied++ }
+    if (-not (Test-Path $s)) { continue }
+    $d = Join-Path $targetDir $f
+    if ($isSelfInstall -or $s -eq $d) { $copied++; continue }
+    Copy-Item $s $d -Force; $copied++
   }
   # settings.json: create from example if missing, never overwrite
   $exSettings = Join-Path $targetDir "example-settings.json"
@@ -341,19 +352,24 @@ try {
   $srcExt = Join-Path $sourceRoot "extensions"
   $dstExt = Join-Path $targetDir "extensions"
   if (Test-Path $srcExt) {
-    if (-not (Test-Path $dstExt)) { New-Item -ItemType Directory -Path $dstExt -Force | Out-Null }
-    Get-ChildItem $srcExt -Directory | ForEach-Object {
-      if ($_.Name -like "*.md") { return }
-      $dst = Join-Path $dstExt $_.Name
-      if (Test-Path $dst) { Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue }
-      Copy-Item $_.FullName $dst -Recurse -Force -Exclude @("node_modules",".git")
-      $copied++
+    if ($isSelfInstall -or $srcExt -eq $dstExt) {
+      # Self-install: extensions already in place — just count, don't delete/re-copy
+      Get-ChildItem $srcExt -Directory | Where-Object { $_.Name -notlike "*.md" } | ForEach-Object { $copied++ }
+    } else {
+      if (-not (Test-Path $dstExt)) { New-Item -ItemType Directory -Path $dstExt -Force | Out-Null }
+      Get-ChildItem $srcExt -Directory | ForEach-Object {
+        if ($_.Name -like "*.md") { return }
+        $dst = Join-Path $dstExt $_.Name
+        if (Test-Path $dst) { Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue }
+        Copy-Item $_.FullName $dst -Recurse -Force -Exclude @("node_modules",".git")
+        $copied++
+      }
     }
   }
 
   # themes — exclude recursive .pi and nul device file
   $srcThemes = Join-Path $sourceRoot "themes"
-  if (Test-Path $srcThemes) {
+  if ((Test-Path $srcThemes) -and -not $isSelfInstall -and $srcThemes -ne (Join-Path $targetDir "themes")) {
     $dstThemes = Join-Path $targetDir "themes"
     if (Test-Path $dstThemes) { Remove-Item $dstThemes -Recurse -Force -ErrorAction SilentlyContinue }
     New-Item -ItemType Directory -Path $dstThemes -Force | Out-Null

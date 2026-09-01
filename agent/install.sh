@@ -223,8 +223,14 @@ write_title
 
 # Copy a tree excluding heavy/unwanted dirs (node_modules, .git).
 # Uses rsync when available, else cp + prune.
+# No-op when source and destination are the same path (self-install).
 copy_tree() {
   _src="$1"; _dst="$2"
+  if [ "$_src" = "$_dst" ]; then return 0; fi
+  # Resolve canonical paths to catch ./ vs absolute same target
+  _src_can="$(cd "$_src" 2>/dev/null && pwd 2>/dev/null || echo "$_src")"
+  _dst_can="$(cd "$_dst" 2>/dev/null && pwd 2>/dev/null || echo "$_dst")"
+  if [ "$_src_can" = "$_dst_can" ]; then return 0; fi
   rm -rf "$_dst" 2>/dev/null || true
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --exclude node_modules --exclude '.git' "$_src/" "$_dst/" 2>/dev/null || \
@@ -296,10 +302,14 @@ if [ "$SKIP_PACKAGES" -eq 1 ]; then
 else
   LABEL="installing pi-context-usage + @baretread/pi-forge"
   set +e
-  run_with_spinner "2" "$LABEL" npm install -g pi-context-usage @baretread/pi-forge --no-audit --no-fund
+  run_with_spinner "2" "$LABEL" npm install -g pi-context-usage@latest @baretread/pi-forge@latest --no-audit --no-fund
   CODE=$?
   set -e
   if [ $CODE -eq 0 ]; then
+    # Verify packages are resolvable (handles npm global prefix quirks with mise/nvm)
+    if ! npm ls -g pi-context-usage >/dev/null 2>&1 || ! npm ls -g @baretread/pi-forge >/dev/null 2>&1; then
+      printf " ${C_YELLOW}⚠${C_RESET} ${C_DIM}[2/4]${C_RESET} pi packages installed but not in global ls — retrying with prefix check${C_RESET}\n"
+    fi
     printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[2/4]${C_RESET} pi packages ${C_DIM}— done${C_RESET}\n"
   else
     printf " ${C_YELLOW}⚠${C_RESET} ${C_DIM}[2/4]${C_RESET} %s ${C_YELLOW}exit %s — continuing (pi will auto-install)${C_RESET}\n" "$LABEL" "$CODE"
@@ -338,7 +348,12 @@ else
   set +e
   for f in AGENTS.md keybindings.json example-settings.json README.md; do
     if [ -f "$SOURCE_ROOT/$f" ]; then
-      cp -f "$SOURCE_ROOT/$f" "$TARGET_DIR/$f" 2>/dev/null && COPIED=$((COPIED+1)) || printf "${C_YELLOW}  ⚠ copy %s failed${C_RESET}\n" "$f"
+      # Self-install: source == target — no copy needed, just count
+      if [ "$SOURCE_ROOT/$f" = "$TARGET_DIR/$f" ] || [ "$SOURCE_ROOT" = "$TARGET_DIR" ]; then
+        COPIED=$((COPIED+1))
+      else
+        cp -f "$SOURCE_ROOT/$f" "$TARGET_DIR/$f" 2>/dev/null && COPIED=$((COPIED+1)) || printf "${C_YELLOW}  ⚠ copy %s failed${C_RESET}\n" "$f"
+      fi
     fi
   done
   # per-user files: never overwrite — create from example if missing, otherwise keep
@@ -372,7 +387,8 @@ else
   fi
 
   # themes if present — skip recursive .pi artifact and nul device file
-  if [ -d "$SOURCE_ROOT/themes" ]; then
+  # Skip if source == target (self-install) — themes already in place
+  if [ "$SOURCE_ROOT" != "$TARGET_DIR" ] && [ -d "$SOURCE_ROOT/themes" ]; then
     rm -rf "$TARGET_DIR/themes" 2>/dev/null || true
     mkdir -p "$TARGET_DIR/themes" 2>/dev/null || true
     # copy themes but exclude .pi and nul
