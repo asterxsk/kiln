@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
   Pi custom-setup installer — Windows / PowerShell
@@ -111,13 +111,14 @@ function Write-StepLine($step, $label, $spin) {
   $frame  = if ($spin) { "${cyellow}$spin${creset}" } else { " " }
   $line   = " $frame $prefix $label"
   if ($HasAnsi -and (Test-IsInteractive)) {
-    [Console]::Write("$Cr$line$(" " * 8)")
+    # \r + EL (\033[K) so each frame overwrites cleanly regardless of length
+    [Console]::Write("$Cr${Esc}[K$line")
   } else {
     Write-Host $line
   }
 }
 function Clear-Line {
-  if ($HasAnsi -and (Test-IsInteractive)) { [Console]::Write("$Cr$(" " * 80)$Cr") }
+  if ($HasAnsi -and (Test-IsInteractive)) { [Console]::Write("$Cr${Esc}[K") }
 }
 
 # ── run with spinner ────────────────────────────────────────────────────────

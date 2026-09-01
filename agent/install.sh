@@ -74,20 +74,12 @@ else
   C_RESET=""; C_BOLD=""; C_DIM=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_CYAN=""; C_GRAY=""
 fi
 
-SPINNER_FRAMES="⠋ ⠙ ⠹ ⠸ ⠼ ⠰ ⠠ ⠦ ⠧ ⠇ ⠏"
+# Spinner frames (braille). Kept as a real array so the index advances in the
+# PARENT shell — calling get_spinner inside a $(...) subshell discarded the
+# increment and froze the spinner on frame 0.
+SPINNER_FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠰ ⠠ ⠦ ⠧ ⠇ ⠏)
+SPINNER_N=${#SPINNER_FRAMES[@]}
 SPINNER_IDX=0
-get_spinner() {
-  set -- $SPINNER_FRAMES
-  n=$#
-  idx=$((SPINNER_IDX % n))
-  SPINNER_IDX=$((SPINNER_IDX+1))
-  i=0
-  for f in $SPINNER_FRAMES; do
-    if [ $i -eq $idx ]; then printf "%s" "$f"; return; fi
-    i=$((i+1))
-  done
-  printf "·"
-}
 
 write_title() {
   if [ "$HAS_ANSI" -eq 1 ]; then
@@ -119,15 +111,17 @@ run_with_spinner() {
   PID=$!
   set -e
   while kill -0 "$PID" 2>/dev/null; do
-    SPIN="$(get_spinner)"
-    printf "${CR} ${C_YELLOW}%s${C_RESET} ${C_DIM}[%s/4]${C_RESET} %s    " "$SPIN" "$STEP" "$LABEL"
+    SPIN="${SPINNER_FRAMES[$SPINNER_IDX]}"
+    SPINNER_IDX=$(( (SPINNER_IDX + 1) % SPINNER_N ))
+    # \r + Erase-in-Line so each frame overwrites cleanly regardless of length
+    printf "${CR}${ESC}[K ${C_YELLOW}%s${C_RESET} ${C_DIM}[%s/4]${C_RESET} %s" "$SPIN" "$STEP" "$LABEL"
     sleep 0.08
   done
   set +e
   wait "$PID" 2>/dev/null; CODE=$?
   set -e
   cat "$TMP_LOG.sp" >> "$TMP_LOG" 2>/dev/null || true
-  printf "${CR}%80s${CR}" " "
+  printf "${CR}${ESC}[K"
   return $CODE
 }
 
