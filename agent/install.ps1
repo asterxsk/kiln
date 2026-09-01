@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 <#
 .SYNOPSIS
   Pi custom-setup installer — Windows / PowerShell
@@ -11,12 +11,12 @@
   TUI inspired by https://pi.dev/install.ps1 — spinner when TTY, silent otherwise.
 
 .EXAMPLE
-  powershell -c "irm https://raw.githubusercontent.com/USER/pi-config/main/agent/install.ps1 | iex"
-  .\install.ps1 -RepoUrl https://github.com/USER/pi-config -Branch main
+  powershell -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 | iex"
+  .\install.ps1 -RepoUrl https://github.com/asterxsk/kiln -Branch main
   .\install.ps1 -Target "$env:USERPROFILE\.pi\agent" -Yes
 
 .NOTES
-  Safe to re-run. Existing settings.json is never overwritten.
+  Safe to re-run. Managed files are force-overwritten; per-user files (settings.json, taste.md, etc.) are preserved.
 #>
 
 param(
@@ -39,7 +39,10 @@ $NodeMinimum   = [version]"22.19.0"
 $Esc           = [char]27
 $Cr            = [char]13
 $TmpLog        = Join-Path ([IO.Path]::GetTempPath()) ("pi-setup-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".log")
-$DefaultRepo   = "https://github.com/baretread/pi-config"
+$DefaultRepo   = "https://github.com/asterxsk/kiln"
+$env:GIT_TERMINAL_PROMPT = "0"
+$env:GCM_INTERACTIVE = "never"
+$env:GIT_ASKPASS = "echo"
 
 # Ensure UTF-8 for glyphs (match pi.dev/install.ps1)
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8 } catch {}
@@ -204,6 +207,7 @@ function Resolve-SourceRoot {
   # Clone to temp
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ("pi-config-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
   Write-Line "${cdim}  → cloning $Repo (branch $Branch) → $tmp${creset}"
+  $env:GIT_TERMINAL_PROMPT = "0"; $env:GIT_ASKPASS = "echo"; $env:GCM_INTERACTIVE = "never"
   $code = Invoke-NativeWithSpinner -Step "3" -Label "fetching config" -FilePath "git" -Args @("clone","--depth","1","--branch",$Branch,$Repo,$tmp)
   if ($code -ne 0) { throw "git clone failed (exit $code). See $TmpLog" }
   $script:ClonedTmp = $tmp
@@ -321,6 +325,16 @@ try {
     Write-Line "${cdim}  created settings.json from example-settings.json${creset}"
   } elseif (Test-Path $settings) {
     Write-Line "${cdim}  kept existing settings.json${creset}"
+  }
+  # taste.md / taste/ — user-specific, preserve if exists
+  foreach ($preserve in @("taste.md","taste","taste.json")) {
+    $p = Join-Path $targetDir $preserve
+    $src = Join-Path $sourceRoot $preserve
+    if (Test-Path $p) {
+      Write-Line "${cdim}  kept existing $preserve${creset}"
+    } elseif (Test-Path $src) {
+      Copy-Item $src $p -Recurse -Force -Exclude @("node_modules",".git") -ErrorAction SilentlyContinue
+    }
   }
 
   # extensions — skip stray .md files, handle spaces
