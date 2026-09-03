@@ -1,5 +1,6 @@
-# Defense in depth: package.json `files` is the allowlist, this is the denylist.
-# Per-user secrets and local artifacts must never enter the published tarball.
+# The tarball mirrors git: everything tracked ships (extensions, tests,
+# themes, installers). This file exists ONLY to keep machine-local state,
+# secrets, and disk junk out of the published package.
 **/node_modules/
 **/.git/
 *.log
@@ -11,33 +12,26 @@ models-store.json
 models.json
 sessions/
 
-# user taste data — root-anchored so the `taste` EXTENSION itself still ships
-/taste/
-/taste.md
-/taste.json
-agent/taste/
-agent/taste.md
-agent/taste.json
-agent/extensions/taste/taste.md
-
-# dev artifacts — not runtime, must not bloat the npx download
-*.mp4
-test/
-evidence/
-$HOME/
+# machine-local config + caches (root and agent copies)
+agent/settings.json
+web-search.json
 web-search-cache/
-nul
-readme-surgery-tmp.py
-distructive.ts
 
-# local-only agent runtime dirs
+# personal taste data — never tracked, never published
+/taste/
+agent/taste/
+taste.md
+taste.json
+
+# local-only runtime / scratch dirs
+.pi/
+tmp/
+temp/
+pi-acp/
 agent/bin/
 agent/npm/
 agent/sessions/
 agent/themes/.pi
 
-# repo-root scratch
-.pi/
-tmp/
-temp/
-pi-acp/
+# known untracked junk (not in git, must not ship either)
+agent/extensions/distructive.ts

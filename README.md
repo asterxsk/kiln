@@ -47,7 +47,7 @@ What the installer does:
 
 ```bash
 npm login                    # once, as asterxsk
-npm pack --dry-run           # review the file list — secrets must never appear
+npm pack --dry-run           # review the file list — payload mirrors git, secrets must never appear
 npm publish --access public  # ships bin/kiln.js + agent payload
 ```
 

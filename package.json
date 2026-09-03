@@ -15,19 +15,6 @@
   "bin": {
     "kiln": "./bin/kiln.js"
   },
-  "files": [
-    "bin/kiln.js",
-    "agent/AGENTS.md",
-    "agent/keybindings.json",
-    "agent/settings.json",
-    "agent/README.md",
-    "agent/install.sh",
-    "agent/install.ps1",
-    "agent/extensions/",
-    "agent/themes/",
-    "README.md",
-    "LICENSE"
-  ],
   "publishConfig": {
     "access": "public"
   }
