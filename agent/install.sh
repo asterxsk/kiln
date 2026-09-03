@@ -321,16 +321,19 @@ else
   printf "${C_DIM}  source  %s${C_RESET}\n" "$SOURCE_ROOT"
   mkdir -p "$TARGET_DIR" 2>/dev/null || true
 
-  # backup (lightweight tar, skip node_modules)
+  # backup (managed files only: extensions + top-level config files).
+  # Per-user data (settings.json, auth.json, sessions/, taste/, etc.) is never
+  # touched by the installer, so it is deliberately NOT backed up.
   if [ -f "$TARGET_DIR/AGENTS.md" ] || [ -d "$TARGET_DIR/extensions" ]; then
     BAK="$TARGET_DIR.bak.$(date +%Y%m%d-%H%M%S 2>/dev/null || echo $$)"
-    printf "${C_DIM}  backup  %s → %s${C_RESET}\n" "$TARGET_DIR" "$BAK"
+    printf "${C_DIM}  backup  %s/extensions → %s${C_RESET}\n" "$TARGET_DIR" "$BAK"
     set +e
-    if command -v tar >/dev/null 2>&1; then
-      tar -czf "$BAK.tgz" -C "$(dirname "$TARGET_DIR")" "$(basename "$TARGET_DIR")" --exclude="node_modules" --exclude="bin" 2>/dev/null || cp -R "$TARGET_DIR" "$BAK" 2>/dev/null || true
-      if [ -f "$BAK.tgz" ]; then printf "${C_DIM}         (%s)${C_RESET}\n" "$BAK.tgz"; fi
-    else
-      cp -R "$TARGET_DIR" "$BAK" 2>/dev/null || true
+    mkdir -p "$BAK" 2>/dev/null || true
+    for f in AGENTS.md keybindings.json example-settings.json README.md; do
+      [ -f "$TARGET_DIR/$f" ] && cp -f "$TARGET_DIR/$f" "$BAK/$f" 2>/dev/null || true
+    done
+    if [ -d "$TARGET_DIR/extensions" ]; then
+      copy_tree "$TARGET_DIR/extensions" "$BAK/extensions" || printf "${C_YELLOW}  ⚠ backup extensions failed${C_RESET}\n"
     fi
     set -e
   fi
