@@ -2,10 +2,10 @@
 
 > A forge-tuned, self-improving `~/.pi/agent` for [pi](https://github.com/badlogic/pi-mono): curated extensions, opinionated defaults, and an installer you can re-run without fear.
 
-[![pi >=0.84.4](https://img.shields.io/badge/pi-%3E%3D0.84.4-6e56ff)](https://github.com/badlogic/pi-mono)
-[![node >=22.19](https://img.shields.io/badge/node-%3E%3D22.19-339933)](https://nodejs.org)
-[![license MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)](#quick-start)
+[![pi >=0.84.4](https://img.shields.io/badge/PI-0.84.4+-8b5cf6?style=flat&labelColor=111)](https://github.com/badlogic/pi-mono)
+[![node >=22.19](https://img.shields.io/badge/NODE-22.19+-8b5cf6?style=flat&labelColor=111)](https://nodejs.org)
+[![license MIT](https://img.shields.io/badge/LICENSE-MIT-8b5cf6?style=flat&labelColor=111)](LICENSE)
+[![platform](https://img.shields.io/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=flat&labelColor=111)](#quick-start)
 
 Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, eleven curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
 
