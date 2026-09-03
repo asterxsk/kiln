@@ -36,11 +36,13 @@ FORCE_LOCAL=0
 CLONED_TMP=""
 START_TS="$(date +%s 2>/dev/null || echo 0)"
 
-# ── mktemp log + trap ──────────────────────────────────────────────────────
+# ── tmp + log under ~/.pi/tmp ────────────────────────────────────────────
+mkdir -p "$HOME/.pi/tmp" 2>/dev/null || true
+TMP_BASE="$HOME/.pi/tmp"
 if command -v mktemp >/dev/null 2>&1; then
-  TMP_LOG="$(mktemp "${TMPDIR:-/tmp}/pi-setup-XXXXXX.log" 2>/dev/null || echo "${TMPDIR:-/tmp}/pi-setup-$$.log")"
+  TMP_LOG="$(mktemp "$TMP_BASE/pi-setup-XXXXXX.log" 2>/dev/null || echo "$TMP_BASE/pi-setup-$$.log")"
 else
-  TMP_LOG="${TMPDIR:-/tmp}/pi-setup-$$.log"
+  TMP_LOG="$TMP_BASE/pi-setup-$$.log"
 fi
 : > "$TMP_LOG" 2>/dev/null || true
 # shellcheck disable=SC2064
@@ -176,10 +178,15 @@ resolve_source_root() {
         ;;
     esac
   fi
-  # Clone to ~/.pi/temp — simple git clone, no account required, then copy agent folder
-  TMP="$HOME/.pi/temp"
-  rm -rf "$TMP" 2>/dev/null || true
-  mkdir -p "$HOME/.pi" 2>/dev/null || true
+  # Clone to ~/.pi/tmp — simple git clone, no account required, then copy agent folder.
+  # Use a unique subdir per run so concurrent installs never clobber each other.
+  mkdir -p "$TMP_BASE" 2>/dev/null || true
+  if command -v mktemp >/dev/null 2>&1; then
+    TMP="$(mktemp -d "$TMP_BASE/kiln-XXXXXX" 2>/dev/null || echo "$TMP_BASE/kiln-$$")"
+  else
+    TMP="$TMP_BASE/kiln-$$"
+  fi
+  mkdir -p "$TMP" 2>/dev/null || true
   CLONED_TMP="$TMP"
   printf "${C_DIM}  → cloning %s (branch %s) → %s${C_RESET}\n" "$REPO" "$BRANCH" "$TMP" >&2
   set +e
@@ -313,7 +320,7 @@ fi
 set +e
 # NOTE: no command substitution here — resolve_source_root records the clone
 # dir in $CLONED_TMP, which would be lost in a $(...) subshell (that is why
-# ~/.pi/temp was never deleted after install).
+# ~/.pi/tmp was never deleted after install).
 resolve_source_root "$REPO_URL" >"$TMP_LOG.src"
 SRC_CODE=$?
 SOURCE_ROOT="$(cat "$TMP_LOG.src" 2>/dev/null || echo "")"
@@ -413,11 +420,10 @@ else
   set -e
 
   printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[3/4]${C_RESET} custom config ${C_DIM}— %s items → %s${C_RESET}\n" "$COPIED" "$TARGET_DIR"
-  # cleanup cloned temp — per spec: clone into ~/.pi/temp, copy agent, delete temp
-  if [ -n "$CLONED_TMP" ] && [ -d "$CLONED_TMP" ] && [ "$CLONED_TMP" = "$HOME/.pi/temp" ]; then
-    rm -rf "$CLONED_TMP" 2>/dev/null || true
-    CLONED_TMP=""
-  fi
+  # cleanup cloned temp — per spec: clone into ~/.pi/tmp, copy agent, delete temp
+  case "$CLONED_TMP" in
+    "$TMP_BASE"/kiln-*) rm -rf "$CLONED_TMP" 2>/dev/null || true; CLONED_TMP="";;
+  esac
   # repo README → alongside the agent dir (e.g. ~/.pi/README.md)
   REPO_ROOT="$(cd "$SOURCE_ROOT/.." 2>/dev/null && pwd 2>/dev/null || echo "")"
   TARGET_PARENT="$(cd "$(dirname "$TARGET_DIR")" 2>/dev/null && pwd 2>/dev/null || echo "")"

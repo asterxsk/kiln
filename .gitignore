@@ -6,6 +6,10 @@
 #   agent/extensions
 # Everything below is local/secret/build and MUST NOT be committed.
 
+# Installer scratch: clone dirs, setup logs, local test targets (all under ~/.pi/tmp)
+/tmp/
+/temp/
+
 # Secrets / trust / live session state
 auth.json
 trust.json

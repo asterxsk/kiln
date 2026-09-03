@@ -23,8 +23,8 @@ curl -fsSL https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.sh
 ```
 
 ```powershell
-# Windows PowerShell
-powershell -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 | iex"
+# Windows PowerShell (5.1 or 7+)
+powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 -UseBasicParsing | iex"
 ```
 
 What the installer does:

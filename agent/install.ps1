@@ -11,7 +11,7 @@
   TUI inspired by https://pi.dev/install.ps1 — spinner when TTY, silent otherwise.
 
 .EXAMPLE
-  powershell -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 | iex"
+  powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 -UseBasicParsing | iex"
   .\install.ps1 -RepoUrl https://github.com/asterxsk/kiln -Branch main
   .\install.ps1 -Target "$env:USERPROFILE\.pi\agent" -Yes
 
@@ -39,7 +39,10 @@ $PiPackage     = "@earendil-works/pi-coding-agent"
 $NodeMinimum   = [version]"22.19.0"
 $Esc           = [char]27
 $Cr            = [char]13
-$TmpLog        = Join-Path ([IO.Path]::GetTempPath()) ("pi-setup-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".log")
+$PiHome        = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+$PiTmp         = Join-Path $PiHome ".pi/tmp"
+try { New-Item -ItemType Directory -Path $PiTmp -Force | Out-Null } catch {}
+$TmpLog        = Join-Path $PiTmp ("pi-setup-" + [Guid]::NewGuid().ToString("N").Substring(0,8) + ".log")
 $DefaultRepo   = "https://github.com/asterxsk/kiln"
 $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "never"
@@ -124,10 +127,13 @@ function Clear-Line {
 
 # ── run with spinner ────────────────────────────────────────────────────────
 function Invoke-NativeWithSpinner {
-  param([string]$Step, [string]$Label, [string]$FilePath, [string[]]$Args)
+  # NOTE: the argument parameter must NOT be named $Args — $Args is an
+  # automatic variable, and splatting @Args silently binds the (empty)
+  # automatic instead of the parameter, dropping every argument.
+  param([string]$Step, [string]$Label, [string]$FilePath, [string[]]$ArgumentList)
   # non-interactive: run synchronously, capture to log
   if (-not (Test-IsInteractive) -or -not $HasAnsi) {
-    $out = & $FilePath @Args 2>&1
+    $out = & $FilePath @ArgumentList 2>&1
     $code = $LASTEXITCODE
     if ($out) { $out | ForEach-Object { Add-Content $TmpLog "$_" } }
     return $code
@@ -136,7 +142,7 @@ function Invoke-NativeWithSpinner {
   $psi = New-Object Diagnostics.ProcessStartInfo
   $psi.FileName = $FilePath
   # Quote args with spaces
-  $psi.Arguments = ($Args | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join " "
+  $psi.Arguments = ($ArgumentList | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join " "
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError  = $true
   $psi.UseShellExecute = $false
@@ -206,18 +212,27 @@ function Resolve-SourceRoot {
     }
     if ($Local) { throw "Local checkout not found (tried: $($roots -join ', '))" }
   }
-  # Clone to ~/.pi/temp — simple git clone, no account required, then copy agent folder
-  $homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
-  $tmp = Join-Path $homeDir ".pi/temp"
-  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
+  # Clone to ~/.pi/tmp — simple git clone, no account required, then copy agent folder.
+  # Use a unique subdir per run so concurrent installs never clobber each other.
+  if (-not (Test-Path $PiTmp)) { New-Item -ItemType Directory -Path $PiTmp -Force | Out-Null }
+  $tmp = Join-Path $PiTmp ("kiln-" + [Guid]::NewGuid().ToString("N").Substring(0,8))
   New-Item -ItemType Directory -Path $tmp -Force | Out-Null
   Write-Line "${cdim}  → cloning $Repo (branch $Branch) → $tmp${creset}"
   $env:GIT_TERMINAL_PROMPT = "0"; $env:GIT_ASKPASS = "echo"; $env:GCM_INTERACTIVE = "never"
-  $code = Invoke-NativeWithSpinner -Step "3" -Label "fetching config" -FilePath "git" -Args @("clone","--depth","1","--branch",$Branch,$Repo,$tmp)
+  $code = Invoke-NativeWithSpinner -Step "3" -Label "fetching config" -FilePath "git" -ArgumentList @("clone","--depth","1","--branch",$Branch,$Repo,$tmp)
   if ($code -ne 0) { throw "git clone failed (exit $code). See $TmpLog" }
   $script:ClonedTmp = $tmp
   if (Test-Path (Join-Path $tmp "agent")) { return (Join-Path $tmp "agent") }
   return $tmp
+}
+
+function Resolve-Npm {
+  # "npm" resolves to npm.ps1 (a PowerShell shim) under Windows PowerShell.
+  # npm.ps1 re-parses its own invocation line, which mangles arguments
+  # passed via variables/splatting — always prefer the native npm.cmd.
+  $cmd = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+  if ($cmd) { return $cmd.Source }
+  return "npm"
 }
 
 function Test-Node {
@@ -261,6 +276,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 $npmVer = (npm --version 2>$null).Trim()
 $gitVer = (git --version 2>$null).Trim()
 Write-Line "${cdim}  node $nodeVer  ·  npm $npmVer  ·  $gitVer${creset}`n"
+$NpmBin = Resolve-Npm
 
 # ── [1/4] pi ────────────────────────────────────────────────────────────────
 if ($SkipPi) {
@@ -268,7 +284,7 @@ if ($SkipPi) {
 } else {
   $hasPi = $null -ne (Get-Command pi -ErrorAction SilentlyContinue)
   $label = if ($hasPi) { "updating pi ($PiPackage)" } else { "installing pi ($PiPackage)" }
-  $code = Invoke-NativeWithSpinner -Step "1" -Label $label -FilePath "npm" -Args @("install","-g","$PiPackage@latest","--no-audit","--no-fund","--min-release-age=0")
+  $code = Invoke-NativeWithSpinner -Step "1" -Label $label -FilePath $NpmBin -ArgumentList @("install","-g","$PiPackage@latest","--no-audit","--no-fund","--min-release-age=0")
   if ($code -eq 0) {
     $piVer = try { (pi --version 2>$null).Trim() } catch { "?" }
     Write-Line " ${cgreen}✔${creset} ${cdim}[1/4]${creset} $label ${cdim}— $piVer${creset}"
@@ -289,7 +305,7 @@ if ($SkipPackages) {
   Write-Line " ${cgreen}✔${creset} ${cdim}[2/4]${creset} pi packages ${cdim}— skipped${creset}"
 } else {
   $label = "installing pi-context-usage + @baretread/pi-forge"
-  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath "npm" -Args @("install","-g","pi-context-usage@latest","@baretread/pi-forge@latest","--no-audit","--no-fund")
+  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath $NpmBin -ArgumentList @("install","-g","pi-context-usage@latest","@baretread/pi-forge@latest","--no-audit","--no-fund")
   if ($code -eq 0) {
     # Verify global ls (handles mise/nvm prefix quirks)
     $hasCtx = $null -ne (npm ls -g pi-context-usage 2>$null | Select-String "pi-context-usage")
@@ -389,7 +405,14 @@ try {
         if ($_.Name -like "*.md") { return }
         $dst = Join-Path $dstExt $_.Name
         if (Test-Path $dst) { Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue }
-        Copy-Item $_.FullName $dst -Recurse -Force -Exclude @("node_modules",".git")
+        # NOTE: Copy-Item -Exclude only filters top-level items, not recursive
+        # contents — copy per-item while skipping node_modules/.git instead.
+        # (node_modules are rebuilt by each extension's installer in step 4;
+        # copying them follows junctions and stalls the install.)
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
+        Get-ChildItem $_.FullName -Exclude @("node_modules",".git") | ForEach-Object {
+          Copy-Item $_.FullName $dst -Recurse -Force -ErrorAction SilentlyContinue
+        }
         $copied++
       }
     }
@@ -407,10 +430,9 @@ try {
   }
 
   Write-Line " ${cgreen}✔${creset} ${cdim}[3/4]${creset} custom config ${cdim}— $copied items → $targetDir${creset}"
-  # cleanup cloned temp — per spec: clone into ~/.pi/temp, copy agent, delete temp
+  # cleanup cloned temp — per spec: clone into ~/.pi/tmp, copy agent, delete temp
   if ($script:ClonedTmp -and (Test-Path $script:ClonedTmp)) {
-    $expected = Join-Path $homeDir ".pi/temp"
-    if ($script:ClonedTmp -eq $expected) {
+    if ($script:ClonedTmp.StartsWith($PiTmp, [StringComparison]::OrdinalIgnoreCase)) {
       Remove-Item $script:ClonedTmp -Recurse -Force -ErrorAction SilentlyContinue
       $script:ClonedTmp = $null
     }
@@ -454,13 +476,13 @@ try {
       if (Test-Path $ps1) {
         # prefer pwsh, fallback to powershell
         $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
-        if ($pwsh) { $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath $pwsh.Source -Args @("-NoProfile","-File",$ps1) }
-        else { $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath "powershell" -Args @("-NoProfile","-ExecutionPolicy","Bypass","-File",$ps1) }
+        if ($pwsh) { $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath $pwsh.Source -ArgumentList @("-NoProfile","-File",$ps1) }
+        else { $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath "powershell" -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass","-File",$ps1) }
       } elseif (Test-Path $sh) {
-        $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath "sh" -Args @($sh)
+        $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath "sh" -ArgumentList @($sh)
       } else {
         $npmArgs = if (Test-Path (Join-Path $ext.FullName "package-lock.json")) { @("--prefix",$ext.FullName,"ci","--no-audit","--no-fund") } else { @("--prefix",$ext.FullName,"install","--no-audit","--no-fund") }
-        $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath "npm" -Args $npmArgs
+        $code = Invoke-NativeWithSpinner -Step "4" -Label $label -FilePath $NpmBin -ArgumentList $npmArgs
       }
 
       if ($code -eq 0) {
