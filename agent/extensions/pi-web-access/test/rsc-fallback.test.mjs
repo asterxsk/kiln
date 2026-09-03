@@ -95,8 +95,8 @@ test("short RSC payloads remain incomplete", async (t) => {
 });
 
 test("background fetch notification distinguishes full, partial, and failed content", () => {
-	assert.match(indexSrc, /ok === fetched\.length\n\s*\? "Full page content now available\."/);
-	assert.match(indexSrc, /ok > 0\n\s*\? "Partial page content now available\."/);
+	assert.match(indexSrc, /ok === fetched\.length\r?\n\s*\? "Full page content now available\."/);
+	assert.match(indexSrc, /ok > 0\r?\n\s*\? "Partial page content now available\."/);
 	assert.match(indexSrc, /"No page content was fetched\. Stored fetch diagnostics are available\."/);
 	assert.match(indexSrc, /Content fetched for \$\{ok\}\/\$\{fetched\.length\} URLs \[\$\{fetchId\}\]\. \$\{availability\}/);
 });

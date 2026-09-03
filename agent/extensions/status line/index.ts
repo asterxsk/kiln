@@ -13,6 +13,12 @@
  * Example (Muse Spark 1.2 contributor on high, 1% of 1M, $0.002, ~/.pi):
  *   left:  opencode-go/muse-spark-1.2-contributer using high effort • 1%/1M
  *   right: $0.002 • ~/.pi
+ *
+ * Visibility: shown in chat and in overlay views (e.g. the subagent interactive
+ * takeover, which is a fullscreen overlay). Hidden during editor takeovers such
+ * as /settings, /model, modelconf, or skillsconf — detected by tracking TUI
+ * focus: every takeover moves focus away from the chat editor (and returns it
+ * on close), while overlays keep hasOverlay() true.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -94,12 +100,67 @@ function computeCost(ctx: ExtensionContext): number {
 	return total;
 }
 
+// ---- takeover visibility ----
+//
+// Hide the footer when a full-screen takeover view is open (/settings, /model,
+// modelconf, skillsconf, login, …) but keep it visible in chat and in overlay
+// views (e.g. the subagent interactive takeover, which is a fullscreen overlay).
+//
+// Two signals, both fail-open (the footer stays visible unless we are sure a
+// takeover is open):
+// 1. Extension UI (ctx.ui.custom/select/input/confirm/editor) always emits
+//    ui_prompt_start/end around the prompt. An active prompt without an overlay
+//    means the editor was replaced by a takeover view.
+// 2. Core takeovers (/settings, /model, login, reload notice) emit no events,
+//    but they move TUI focus to a well-known component class, so match those
+//    names. Inline widgets like autocomplete never move focus, so the footer
+//    stays visible while completing.
+
+// Matches core takeover views (all setFocus targets without ui_prompt
+// events): SettingsSelectorComponent, ModelSelectorComponent,
+// LoginDialogComponent, and the reload-notice Container.
+
+const CORE_TAKEOVER_FOCUS = /(SelectorComponent|DialogComponent)$/;
+
+function coreTakeoverName(tui: TUI): string | null {
+	let focused: object | null = null;
+	try {
+		focused = (tui as unknown as { getFocusedComponent?: () => object | null }).getFocusedComponent?.() ?? null;
+	} catch {
+		return null;
+	}
+	if (!focused) return null;
+	const name = (focused as { constructor?: { name?: string } }).constructor?.name ?? "?";
+	if (name === "Container" || CORE_TAKEOVER_FOCUS.test(name)) return name;
+	return null;
+}
+
+function hasVisibleOverlay(tui: TUI): boolean {
+	try {
+		return typeof tui.hasOverlay === "function" && tui.hasOverlay();
+	} catch {
+		return false;
+	}
+}
+
 // ---- extension ----
 
 export default function (pi: ExtensionAPI) {
 	debugLog("extension factory loaded");
 	let activeTui: TUI | undefined;
+	let lastHideReason: string | null | undefined;
+	// Active extension UI prompts (ctx.ui.custom/select/input/confirm/editor).
+	// Any prompt without a visible overlay is an editor takeover.
+	let uiPromptDepth = 0;
 
+	pi.on("ui_prompt_start", () => {
+		uiPromptDepth++;
+		activeTui?.requestRender();
+	});
+	pi.on("ui_prompt_end", () => {
+		uiPromptDepth = Math.max(0, uiPromptDepth - 1);
+		activeTui?.requestRender();
+	});
 	// Re-render footer when model/thinking/tools change outside the normal render loop
 	pi.on("model_select", () => activeTui?.requestRender());
 	pi.on("thinking_level_select", () => activeTui?.requestRender());
@@ -132,6 +193,16 @@ export default function (pi: ExtensionAPI) {
 				invalidate() {},
 				render(width: number): string[] {
 					if (width <= 0) return [""];
+					// Overlay views (subagent takeover, pickers) keep the footer.
+					let hideReason: string | null = null;
+					if (!hasVisibleOverlay(tui)) {
+						hideReason = uiPromptDepth > 0 ? "ui-prompt" : coreTakeoverName(tui);
+					}
+					if (hideReason !== lastHideReason) {
+						lastHideReason = hideReason;
+						debugLog(hideReason ? `hidden (${hideReason})` : "shown");
+					}
+					if (hideReason) return [""];
 					const modelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no-model";
 					const thinkingLevel = (pi.getThinkingLevel() as string | undefined) ?? (ctx.thinkingLevel as string | undefined) ?? "off";
 					const thinkingText = formatThinking(thinkingLevel);
@@ -196,6 +267,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		// Never leave a stale prompt count behind (would hide the footer forever).
+		uiPromptDepth = 0;
 		// Restore default footer when session tears down (avoid stale closure)
 		try {
 			if (ctx.mode === "tui") ctx.ui.setFooter(undefined);

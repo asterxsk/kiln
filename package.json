@@ -1,0 +1,34 @@
+{
+  "name": "@asterxsk/kiln",
+  "version": "0.1.0",
+  "description": "Kiln — versioned pi agent configuration (extensions, defaults, keybindings) with an idempotent cross-platform installer.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asterxsk/kiln.git"
+  },
+  "homepage": "https://github.com/asterxsk/kiln#readme",
+  "keywords": ["pi", "agent", "coding-agent", "installer", "config"],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "bin": {
+    "kiln": "./bin/kiln.js"
+  },
+  "files": [
+    "bin/kiln.js",
+    "agent/AGENTS.md",
+    "agent/keybindings.json",
+    "agent/settings.json",
+    "agent/README.md",
+    "agent/install.sh",
+    "agent/install.ps1",
+    "agent/extensions/",
+    "agent/themes/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

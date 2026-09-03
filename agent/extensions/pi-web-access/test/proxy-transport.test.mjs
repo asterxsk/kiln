@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { test } from "node:test";
 
 import initializeExtension from "../index.ts";
@@ -12,6 +12,15 @@ const originalPath = process.env.PATH;
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 const originalNoProxy = process.env.NO_PROXY;
 const originalNoProxyLower = process.env.no_proxy;
+
+// Fake shebang executables cannot run on Windows: extensionless scripts are not
+// resolvable/spawnable via CreateProcess, and `.cmd` shims are refused by
+// child_process without `shell: true` (post CVE-2024-27980 hardening). Tests
+// below that depend on the fake curl's canned responses skip there; they still
+// run on POSIX CI. Behavior-only proxy tests are unaffected and keep running.
+const SKIP_FAKE_CURL = process.platform === "win32"
+	? "requires a runnable fake curl executable (unavailable on Windows)"
+	: false;
 
 async function withFakeCurl(t, routes, fn) {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-test-"));
@@ -34,7 +43,13 @@ fs.writeFileSync(valueAfter("--output"), route.body || "");
 process.stdout.write(JSON.stringify({ url_effective: url, num_redirects: 0 }));
 `);
 	await chmod(curlPath, 0o755);
-	process.env.PATH = `${dir}:${originalPath ?? ""}`;
+	if (process.platform === "win32") {
+		// Windows CreateProcess resolves executables via PATHEXT, so the
+		// extensionless shebang script above is invisible to spawn("curl").
+		// A curl.cmd shim in the same directory makes the fake win resolution.
+		await writeFile(join(dir, "curl.cmd"), `@echo off\r\nnode "%~dp0curl" %*\r\n`);
+	}
+	process.env.PATH = `${dir}${delimiter}${originalPath ?? ""}`;
 	process.env.PI_PROXY_TEST_LOG = logPath;
 	process.env.PI_PROXY_TEST_ROUTES = JSON.stringify(routes);
 	process.env.NO_PROXY = "";
@@ -102,7 +117,7 @@ function proxyArg(args) {
 	return index === -1 ? undefined : args[index + 1];
 }
 
-test("proxy curl redirects strip caller headers across origins", async (t) => {
+test("proxy curl redirects strip caller headers across origins", { skip: SKIP_FAKE_CURL }, async (t) => {
 	await withFakeCurl(t, {
 		"https://origin.example/start": { status: 302, statusText: "Found", location: "https://other.example/final" },
 		"https://other.example/final": { status: 200, statusText: "OK", body: "ok" },
@@ -183,7 +198,7 @@ test("proxy transport errors redact proxy credentials", async (t) => {
 	});
 });
 
-test("proxy curl redirects keep caller headers on the same origin", async (t) => {
+test("proxy curl redirects keep caller headers on the same origin", { skip: SKIP_FAKE_CURL }, async (t) => {
 	await withFakeCurl(t, {
 		"https://origin.example/start": { status: 302, statusText: "Found", location: "/final" },
 		"https://origin.example/final": { status: 200, statusText: "OK", body: "ok" },
@@ -198,7 +213,7 @@ test("proxy curl redirects keep caller headers on the same origin", async (t) =>
 	});
 });
 
-test("proxy curl keeps manual redirects as redirect responses", async (t) => {
+test("proxy curl keeps manual redirects as redirect responses", { skip: SKIP_FAKE_CURL }, async (t) => {
 	await withFakeCurl(t, {
 		"https://origin.example/start": { status: 302, statusText: "Found", location: "https://other.example/final" },
 	}, async (logPath) => {
@@ -210,20 +225,21 @@ test("proxy curl keeps manual redirects as redirect responses", async (t) => {
 	});
 });
 
-test("source_check fetchContent uses the explicit proxy for result pages", async (t) => {
-	const previousKey = process.env.OPENAI_API_KEY;
-	process.env.OPENAI_API_KEY = "source-check-proxy-test-key";
+test("source_check fetchContent uses the explicit proxy for result pages", { skip: SKIP_FAKE_CURL }, async (t) => {
+	const previousKey = process.env.EXA_API_KEY;
+	process.env.EXA_API_KEY = "source-check-proxy-test-key";
 	t.after(() => {
-		if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-		else process.env.OPENAI_API_KEY = previousKey;
+		if (previousKey === undefined) delete process.env.EXA_API_KEY;
+		else process.env.EXA_API_KEY = previousKey;
 	});
 
 	await withFakeCurl(t, {
-		"https://api.openai.com/v1/responses": {
+		"https://api.exa.ai/answer": {
 			status: 200,
 			statusText: "OK",
 			body: JSON.stringify({
-				output: [{ type: "web_search_call", action: { sources: [{ title: "API docs", url: "https://example.com/api" }] } }],
+				answer: "The API docs are available.",
+				citations: [{ title: "API docs", url: "https://example.com/api" }],
 			}),
 		},
 		"https://example.com/api": { status: 200, statusText: "OK", body: "<html><title>API docs</title><body>The API docs are available.</body></html>" },
@@ -232,14 +248,13 @@ test("source_check fetchContent uses the explicit proxy for result pages", async
 		assert.ok(tool);
 		const response = await tool.execute("call", {
 			claim: "API docs",
-			provider: "openai",
 			fetchContent: true,
 			proxy: "http://call-proxy.example:8080",
 		}, undefined, undefined, { modelRegistry: {} });
 
 		assert.equal(response.details.sourceCount, 1);
 		const calls = await readCurlCalls(logPath);
-		const apiCall = calls.find((args) => args.at(-1) === "https://api.openai.com/v1/responses");
+		const apiCall = calls.find((args) => args.at(-1) === "https://api.exa.ai/answer");
 		const pageCall = calls.find((args) => args.at(-1) === "https://example.com/api");
 		assert.ok(apiCall);
 		assert.ok(pageCall);
@@ -248,7 +263,7 @@ test("source_check fetchContent uses the explicit proxy for result pages", async
 	});
 });
 
-test("fetch_content passes the explicit proxy through queued extraction", async (t) => {
+test("fetch_content passes the explicit proxy through queued extraction", { skip: SKIP_FAKE_CURL }, async (t) => {
 	await withFakeCurl(t, {
 		"https://example.com/page": {
 			status: 200,

@@ -95,10 +95,10 @@ test("tool registration gates support legacy and per-tool config", () => {
 });
 
 test("command registration gates default to enabled", () => {
-	assert.deepEqual(registeredCommandNames({}), ["websearch", "curator", "google-account", "search"]);
+	assert.deepEqual(registeredCommandNames({}), ["google-account", "search"]);
 	assert.deepEqual(registeredCommandNames({
 		commands: { websearch: { enabled: false }, search: { enabled: false } },
-	}), ["curator", "google-account"]);
+	}), ["google-account"]);
 });
 
 test("fetch_content schema exposes auth profile opt-in", () => {

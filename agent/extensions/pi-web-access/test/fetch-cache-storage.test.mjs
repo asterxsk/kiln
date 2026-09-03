@@ -10,6 +10,7 @@ import { clearResults, deleteResult, getFetchCacheDir, getResult, pruneExpiredFe
 
 const originalFetch = globalThis.fetch;
 const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalCacheDir = process.env.PI_WEB_ACCESS_CACHE_DIR;
 const originalDateNow = Date.now;
 
 afterEach(() => {
@@ -17,12 +18,15 @@ afterEach(() => {
 	Date.now = originalDateNow;
 	if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 	else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+	if (originalCacheDir === undefined) delete process.env.PI_WEB_ACCESS_CACHE_DIR;
+	else process.env.PI_WEB_ACCESS_CACHE_DIR = originalCacheDir;
 	clearResults();
 });
 
 async function useTempAgentDir() {
 	const dir = await mkdtemp(join(tmpdir(), "pi-web-access-fetch-cache-"));
 	process.env.PI_CODING_AGENT_DIR = dir;
+	process.env.PI_WEB_ACCESS_CACHE_DIR = join(dir, "web-search-cache");
 	return dir;
 }
 

@@ -18,7 +18,14 @@ Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon o
 One line, then you're done:
 
 ```bash
-# macOS / Linux / Git Bash
+# npm / bun (recommended — no Defender flag, no git needed)
+npx @asterxsk/kiln --yes
+# or: npm i -g @asterxsk/kiln && kiln --yes
+# or: bunx @asterxsk/kiln --yes
+```
+
+```bash
+# macOS / Linux / Git Bash (classic)
 curl -fsSL https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.sh | sh
 ```
 
@@ -34,7 +41,15 @@ What the installer does:
 3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten, your `settings.json`, `taste/`, sessions, and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
-**Safe to re-run.** It back ups the extensions and config files it replaces, never touches per-user state, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control.
+**Safe to re-run.** It back ups the extensions and config files it replaces, never touches per-user state, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The `npx` installer ships the config inside the tarball, so it needs no `git`; `--repo`/`--branch` fall back to a plain-HTTPS clone when you point at a fork.
+
+### Publishing the npm package
+
+```bash
+npm login                    # once, as asterxsk
+npm pack --dry-run           # review the file list — secrets must never appear
+npm publish --access public  # ships bin/kiln.js + agent payload
+```
 
 Prefer to do it by hand?
 

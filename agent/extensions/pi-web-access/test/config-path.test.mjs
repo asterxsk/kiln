@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
 const utilsUrl = new URL("../utils.ts", import.meta.url).href;
-const perplexityUrl = new URL("../perplexity.ts", import.meta.url).href;
+const exaUrl = new URL("../exa.ts", import.meta.url).href;
 const geminiApiUrl = new URL("../gemini-api.ts", import.meta.url).href;
 
 function runChild(script, env) {
 	const childEnv = { ...process.env };
-	delete childEnv.PERPLEXITY_API_KEY;
+	delete childEnv.EXA_API_KEY;
 	delete childEnv.GEMINI_API_KEY;
 	delete childEnv.GOOGLE_GEMINI_BASE_URL;
 	delete childEnv.CLOUDFLARE_API_KEY;
@@ -35,16 +35,16 @@ test("web-search config path uses PI_CODING_AGENT_DIR before XDG_CONFIG_HOME", a
 	const xdgDir = join(root, "xdg");
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(join(xdgDir, "pi"), { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ perplexityApiKey: "pplx-from-agent" }) + "\n", "utf8");
+	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ exaApiKey: "exa-from-agent" }) + "\n", "utf8");
 	await writeFile(join(xdgDir, "pi", "web-search.json"), JSON.stringify({}) + "\n", "utf8");
 
 	const child = runChild(`
 		const { getWebSearchConfigDir, getWebSearchConfigPath } = await import(${JSON.stringify(utilsUrl)});
-		const { isPerplexityAvailable } = await import(${JSON.stringify(perplexityUrl)});
+		const { isExaAvailable } = await import(${JSON.stringify(exaUrl)});
 		console.log(JSON.stringify({
 			dir: getWebSearchConfigDir(),
 			path: getWebSearchConfigPath(),
-			available: isPerplexityAvailable(),
+			available: isExaAvailable(),
 		}));
 	`, {
 		PI_CODING_AGENT_DIR: agentDir,
@@ -133,13 +133,12 @@ test("Gemini base URL and Cloudflare auth use env before config", async () => {
 test("Gemini command source is lazy, overrides stale env, rotates, and uses header auth", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gemini-command-"));
 	const agentDir = join(root, "agent-dir");
-	const commandPath = join(root, "read-key.sh");
+	const commandPath = join(root, "read-key.mjs");
 	const counterPath = join(root, "counter");
 	await mkdir(agentDir, { recursive: true });
-	await writeFile(commandPath, `#!/bin/sh\ncount=0\n[ ! -f "$1" ] || count=$(cat "$1")\ncount=$((count + 1))\nprintf '%s' "$count" >"$1"\nprintf 'synthetic-gemini-%s\\n' "$count"\n`, "utf8");
-	await chmod(commandPath, 0o700);
+	await writeFile(commandPath, `import { existsSync, readFileSync, writeFileSync } from "node:fs";\nconst counterPath = process.argv[2];\nconst count = (existsSync(counterPath) ? Number(readFileSync(counterPath, "utf8")) : 0) + 1;\nwriteFileSync(counterPath, String(count));\nprocess.stdout.write("synthetic-gemini-" + count);\n`, "utf8");
 	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({
-		geminiApiKey: `!${commandPath} ${counterPath}`,
+		geminiApiKey: `!${JSON.stringify(process.execPath)} ${JSON.stringify(commandPath)} ${JSON.stringify(counterPath)}`,
 	}) + "\n", "utf8");
 
 	const child = runChild(`

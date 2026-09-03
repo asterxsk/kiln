@@ -140,35 +140,6 @@ test("image attachment gate suppresses malformed config", async () => {
 	assert.match(output.parseError, /Failed to parse .*web-search\.json/);
 });
 
-test("Ollama Web Fetch is disabled for remote URLs without hosted-provider opt-in", async () => {
-	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-ollama-"));
-	await writeFile(join(root, "web-search.json"), JSON.stringify({ ollamaApiKey: "test-key", fetchRouting: { providers: ["ollama", "http"] } }) + "\n", "utf8");
-	const childEnv = { ...process.env, PI_CODING_AGENT_DIR: root, HOME: root, USERPROFILE: root };
-	delete childEnv.OLLAMA_API_KEY;
-	const child = spawnSync(process.execPath, ["--input-type=module"], {
-		input: `
-			const calls = [];
-			globalThis.fetch = async (url) => {
-				const text = String(url);
-				calls.push(text);
-				if (text === "https://example.com/routed") return new Response("blocked", { status: 403 });
-				if (text === "https://ollama.com/api/web_fetch") return new Response(JSON.stringify({ title: "Ollama", content: "remote content" }), { status: 200 });
-				throw new Error("Unexpected fetch " + text);
-			};
-			const { extractContent } = await import(${JSON.stringify(extractUrl)});
-			const result = await extractContent("https://example.com/routed", undefined, { lookup: async () => [{ address: "93.184.216.34", family: 4 }] });
-			console.log(JSON.stringify({ calls, result }));
-		`,
-		encoding: "utf8",
-		env: childEnv,
-		maxBuffer: 2 * 1024 * 1024,
-	});
-	assert.equal(child.status, 0, child.stderr);
-	const output = JSON.parse(child.stdout.trim());
-	assert.deepEqual(output.calls, ["https://example.com/routed"]);
-	assert.match(output.result.error, /HTTP 403/);
-});
-
 test("hosted providers cannot bypass redirect policy validation", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-redirect-"));
 	await writeFile(join(root, "web-search.json"), JSON.stringify({ fetchRouting: { providers: ["jina"], allowRemoteHostedProviders: true } }) + "\n", "utf8");

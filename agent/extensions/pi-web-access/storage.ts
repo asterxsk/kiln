@@ -1,10 +1,10 @@
 import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, type Stats, unlinkSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ExtractedContent } from "./extract.ts";
-import type { SearchResult } from "./perplexity.ts";
-import { getWebSearchConfigDir } from "./utils.ts";
+import type { SearchResult } from "./search-types.ts";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const FETCH_CACHE_DIR = "web-search-cache";
@@ -72,8 +72,17 @@ export function generateId(): string {
 	return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// Fetch cache lives inside the pi-web-access extension folder so it travels
+// with the extension instead of the Pi config directory.
+const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
+
+/** Explicit cache directory override (used by tests for isolation). */
+const CACHE_DIR_OVERRIDE_ENV = "PI_WEB_ACCESS_CACHE_DIR";
+
 export function getFetchCacheDir(): string {
-	return join(getWebSearchConfigDir(), FETCH_CACHE_DIR);
+	const override = process.env[CACHE_DIR_OVERRIDE_ENV]?.trim();
+	if (override) return override;
+	return join(EXTENSION_DIR, FETCH_CACHE_DIR);
 }
 
 function fetchCachePath(key: string): string | null {

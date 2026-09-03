@@ -3,15 +3,24 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-const repoRoot = resolve(new URL("..", import.meta.url).pathname);
+// npm ships as a shell script / .cmd wrapper, neither of which is spawnable on
+// Windows (extensionless `npm` does not resolve, `.cmd` is refused without a
+// shell). There, invoke its CLI entry through the current node binary instead.
+const NPM_BIN = process.platform === "win32" ? process.execPath : "npm";
+const NPM_PREFIX = process.platform === "win32"
+	? [join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js")]
+	: [];
+
+const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 test("packed installs include typebox without peer dependencies", async () => {
 	const tempDir = await mkdtemp(join(tmpdir(), "pi-web-access-pack-install-"));
 	try {
-		const packOutput = execFileSync("npm", ["pack", "--json", "--pack-destination", tempDir], {
+		const packOutput = execFileSync(NPM_BIN, [...NPM_PREFIX, "pack", "--json", "--pack-destination", tempDir], {
 			cwd: repoRoot,
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
@@ -25,7 +34,7 @@ test("packed installs include typebox without peer dependencies", async () => {
 		assert.ok(!packedFiles.some((path) => path.startsWith("test/")));
 		const tarball = join(tempDir, filename);
 
-		execFileSync("npm", ["install", "--omit=peer", "--ignore-scripts", "--no-audit", "--no-fund", tarball], {
+		execFileSync(NPM_BIN, [...NPM_PREFIX, "install", "--omit=peer", "--ignore-scripts", "--no-audit", "--no-fund", tarball], {
 			cwd: tempDir,
 			stdio: ["ignore", "pipe", "pipe"],
 		});

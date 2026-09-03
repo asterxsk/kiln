@@ -1,0 +1,43 @@
+# Defense in depth: package.json `files` is the allowlist, this is the denylist.
+# Per-user secrets and local artifacts must never enter the published tarball.
+**/node_modules/
+**/.git/
+*.log
+
+# secrets / live state (unanchored on purpose — aggressive)
+auth.json
+trust.json
+models-store.json
+models.json
+sessions/
+
+# user taste data — root-anchored so the `taste` EXTENSION itself still ships
+/taste/
+/taste.md
+/taste.json
+agent/taste/
+agent/taste.md
+agent/taste.json
+agent/extensions/taste/taste.md
+
+# dev artifacts — not runtime, must not bloat the npx download
+*.mp4
+test/
+evidence/
+$HOME/
+web-search-cache/
+nul
+readme-surgery-tmp.py
+distructive.ts
+
+# local-only agent runtime dirs
+agent/bin/
+agent/npm/
+agent/sessions/
+agent/themes/.pi
+
+# repo-root scratch
+.pi/
+tmp/
+temp/
+pi-acp/

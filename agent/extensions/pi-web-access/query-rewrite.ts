@@ -1,5 +1,5 @@
 import { complete, type Api, type Model, type ProviderHeaders } from "@earendil-works/pi-ai/compat";
-import type { SummaryGenerationContext } from "./summary-review.ts";
+type SummaryGenerationContext = Pick<import("@earendil-works/pi-coding-agent").ExtensionContext, "model" | "modelRegistry" | "cwd" | "isProjectTrusted">;
 import { findModelWithProviderRouting, loadEnabledModelPatterns, modelMatchesEnabledPatterns } from "./summary-model-scope.ts";
 
 async function resolveFirstAvailableModel(

@@ -4,7 +4,7 @@ import { activityMonitor } from "./activity.ts";
 import { canAttachImages } from "./feature-config.ts";
 import { isGeminiWebAvailable, queryWithCookies } from "./gemini-web.ts";
 import { isGeminiApiAvailableWithVideo, queryGeminiApiWithVideo } from "./gemini-api.ts";
-import { isPerplexityAvailable, searchWithPerplexity } from "./perplexity.ts";
+import { isExaAvailable, searchWithExa } from "./exa.ts";
 import { extractHeadingTitle, type ExtractedContent, type FrameResult, type VideoFrame } from "./extract.ts";
 import { formatSeconds, readExecError, isTimeoutError, trimErrorText, mapFfmpegError, getWebSearchConfigPath } from "./utils.ts";
 
@@ -113,7 +113,7 @@ export async function extractYouTube(
 
 	const result = await tryGeminiWeb(canonicalUrl, effectivePrompt, effectiveModel, signal, attemptErrors)
 		?? await tryGeminiApi(canonicalUrl, effectivePrompt, effectiveModel, signal, attemptErrors)
-		?? await tryPerplexity(url, effectivePrompt, signal, attemptErrors);
+		?? await tryExa(url, effectivePrompt, signal, attemptErrors);
 
 	if (result) {
 		result.url = url;
@@ -289,39 +289,40 @@ async function tryGeminiApi(
 	}
 }
 
-async function tryPerplexity(
+async function tryExa(
 	url: string,
 	prompt: string,
 	signal: AbortSignal | undefined,
 	attemptErrors: string[],
 ): Promise<ExtractedContent | null> {
 	try {
-		if (signal?.aborted || !isPerplexityAvailable()) return null;
+		if (signal?.aborted || !isExaAvailable()) return null;
 
-		const perplexityQuery = prompt === YOUTUBE_PROMPT
+		const exaQuery = prompt === YOUTUBE_PROMPT
 			? `Summarize this YouTube video in detail: ${url}`
 			: `${prompt} YouTube video: ${url}`;
 
-		const { answer } = await searchWithPerplexity(
-			perplexityQuery,
+		const exaResult = await searchWithExa(
+			exaQuery,
 			{ signal },
 		);
+		const answer = exaResult?.answer;
 
 		if (!answer) return null;
 
 		const content =
-			`# Video Summary (via Perplexity)\n\n${answer}\n\n` +
+			`# Video Summary (via Exa)\n\n${answer}\n\n` +
 			`*Full video understanding requires Gemini access. Set GEMINI_API_KEY or sign into Google in a supported Chromium browser.*`;
 
 		return {
 			url,
-			title: "Video Summary (via Perplexity)",
+			title: "Video Summary (via Exa)",
 			content,
 			error: null,
 		};
 	} catch (err) {
 		if (shouldRethrow(err)) throw err;
-		if (!signal?.aborted) addAttemptError(attemptErrors, "Perplexity", err);
+		if (!signal?.aborted) addAttemptError(attemptErrors, "Exa", err);
 		return null;
 	}
 }

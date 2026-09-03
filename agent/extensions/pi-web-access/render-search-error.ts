@@ -27,13 +27,13 @@ export interface CancelledQueryDetail {
 }
 
 export interface SearchErrorDetails {
-	/** The headline error/cancel message, e.g. "Search curation cancelled (stale)." */
+	/** The headline error/cancel message, e.g. "Search cancelled (stale)." */
 	error?: string;
 	cancelled?: boolean;
 	cancelReason?: string;
-	/** Did the curator browser page ever establish a connection? */
+	/** Did the search ever establish a connection / make progress? */
 	browserConnected?: boolean;
-	/** Age (ms) of the last curator heartbeat at cancel time, if known. */
+	/** Age (ms) of the last progress heartbeat at cancel time, if known. */
 	lastHeartbeatAgeMs?: number | null;
 	/** Total queries the user requested. */
 	queryCount?: number;
@@ -75,7 +75,7 @@ export function buildSearchErrorPlan(details: SearchErrorDetails | undefined | n
 	const errored = queries.filter(q => q.error).length;
 
 	// Rich diagnostics only make sense when there is something to diagnose: a
-	// cancelled/curator result with partial data, OR a non-cancel error that carries
+	// cancelled result with partial data, OR a non-cancel error that carries
 	// extra detail (urls/response-id for fetch_content, the failed query for
 	// get_search_content). A bare argument error (e.g. "No URL
 	// provided") stays a clean single line -- no noise.
@@ -85,9 +85,9 @@ export function buildSearchErrorPlan(details: SearchErrorDetails | undefined | n
 		return { expanded: [headline], collapsed: [], expandHint: null };
 	}
 
-	// --- diagnostics block (expanded): curator/cancel-specific only. For non-cancel
+	// --- diagnostics block (expanded): cancel-specific only. For non-cancel
 	// errors (fetch_content/get_search_content) there is no browser or
-	// query-curation state to report, so we skip this block and show only Details. ---
+	// query state to report beyond the queries themselves, so we skip this block and show only Details. ---
 	const expanded: string[] = [headline, ""];
 
 	if (details.cancelled === true || queries.length > 0) {

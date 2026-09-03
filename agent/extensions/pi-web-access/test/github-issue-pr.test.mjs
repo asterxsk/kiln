@@ -9,11 +9,27 @@ const moduleUrl = new URL("../github-issue-pr.ts", import.meta.url).href;
 const extractUrl = new URL("../extract.ts", import.meta.url).href;
 const publicLookup = async () => [{ address: "140.82.112.6", family: 4 }];
 
+// Fake shebang `gh` executables cannot run on Windows: extensionless scripts are
+// not resolvable/spawnable via CreateProcess, and `.cmd` shims are refused by
+// child_process without `shell: true` (post CVE-2024-27980 hardening). Tests
+// below that depend on the fake gh's canned JSON skip there; they still run on
+// POSIX CI. Tests that only need gh to fail (fallback/abort paths) keep
+// running, since a spawn error exercises the same fallback.
+
 async function writeFakeExecutable(binDir, name, source) {
 	const executable = join(binDir, name);
 	await writeFile(executable, `#!/usr/bin/env node\n${source}\n`, { mode: 0o755 });
+	if (process.platform === "win32") {
+		// Windows CreateProcess resolves executables via PATHEXT, so the
+		// extensionless shebang script above is invisible to spawn/execFile.
+		await writeFile(join(binDir, `${name}.cmd`), `@echo off\r\nnode "%~dp0${name}" %*\r\n`);
+	}
 	return executable;
 }
+
+const SKIP_FAKE_GH = process.platform === "win32"
+	? "requires a runnable fake gh executable (unavailable on Windows)"
+	: false;
 
 test("parseGitHubIssuePrUrl accepts PR and issue variants without changing repo parsing", async () => {
 	const { parseGitHubIssuePrUrl } = await import(moduleUrl);
@@ -102,7 +118,7 @@ test("renderer marks truncated review verdicts", async () => {
 	assert.match(result.content, /10 of 11 review verdicts shown/);
 });
 
-test("extractGitHubIssuePr retries gh view with core fields on unknown --json field", async () => {
+test("extractGitHubIssuePr retries gh view with core fields on unknown --json field", { skip: SKIP_FAKE_GH }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gh-pr-"));
 	const binDir = join(root, "bin");
 	const agentDir = join(root, "agent");
@@ -138,7 +154,7 @@ test("extractGitHubIssuePr retries gh view with core fields on unknown --json fi
 	assert.match(result.content, /Linked references\nUnavailable in this GitHub fetch path/);
 });
 
-test("gh path fetches an anchored review comment beyond fetched pages", async () => {
+test("gh path fetches an anchored review comment beyond fetched pages", { skip: SKIP_FAKE_GH }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gh-deep-review-anchor-"));
 	const binDir = join(root, "bin");
 	const agentDir = join(root, "agent");
@@ -181,7 +197,7 @@ test("gh path fetches an anchored review comment beyond fetched pages", async ()
 	assert.match(result.content, /review thread comments shown from at least 301/);
 });
 
-test("gh path rejects anchored review comments from another pull request", async () => {
+test("gh path rejects anchored review comments from another pull request", { skip: SKIP_FAKE_GH }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gh-cross-review-anchor-"));
 	const binDir = join(root, "bin");
 	const agentDir = join(root, "agent");
@@ -218,7 +234,7 @@ test("gh path rejects anchored review comments from another pull request", async
 	assert.match(result.content, /anchored review thread comment unavailable for this pull request/);
 });
 
-test("gh path still attempts an anchored review comment after page failure", async () => {
+test("gh path still attempts an anchored review comment after page failure", { skip: SKIP_FAKE_GH }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gh-page-fail-anchor-"));
 	const binDir = join(root, "bin");
 	const agentDir = join(root, "agent");
@@ -255,7 +271,7 @@ test("gh path still attempts an anchored review comment after page failure", asy
 	assert.match(result.content, /deep after page failure/);
 });
 
-test("gh review thread page failure renders unavailable instead of none", async () => {
+test("gh review thread page failure renders unavailable instead of none", { skip: SKIP_FAKE_GH }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gh-review-unavailable-"));
 	const binDir = join(root, "bin");
 	const agentDir = join(root, "agent");

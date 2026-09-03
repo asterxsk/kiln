@@ -1,7 +1,7 @@
 {
   "name": "pi-web-access",
   "version": "0.25.0",
-  "description": "Web search, URL fetching, GitHub repo cloning, PDF extraction, YouTube video understanding, and local video analysis for Pi coding agent. Supports OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Jina, SERPdive, Kagi, Ollama, AnySearch, Bright Data SERP, SerpBase, SearXNG, Exa, Perplexity, Gemini, and Kimi.",
+  "description": "Web search via Exa, URL fetching, GitHub repo cloning, PDF extraction, YouTube video understanding, and local video analysis for Pi coding agent.",
   "type": "module",
   "scripts": {
     "test": "node --test",
@@ -14,11 +14,7 @@
     "pi-coding-agent",
     "extension",
     "web-search",
-    "tinyfish",
-    "search1api",
-    "searchinfinity",
-    "querit",
-    "perplexity",
+    "exa",
     "fetch",
     "scraping"
   ],

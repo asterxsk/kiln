@@ -103,7 +103,8 @@ export function isVideoFile(input: string): VideoFileInfo | null {
 	const config = loadVideoConfig();
 	if (!config.enabled) return null;
 
-	const isFilePath = input.startsWith("/") || input.startsWith("./") || input.startsWith("../") || input.startsWith("file://");
+	const isFilePath = input.startsWith("/") || input.startsWith("./") || input.startsWith("../") || input.startsWith("file://")
+		|| input.startsWith("\\") || /^[A-Za-z]:[\\/]/.test(input);
 	if (!isFilePath) return null;
 
 	let filePath = input;

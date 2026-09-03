@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,11 +104,20 @@ test("dedicated agent fetches oversized-header responses the pi-style global dis
 test("resolveGeminiFetch falls back to the ambient global fetch when undici is not resolvable", () => {
 	const dir = mkdtempSync(join(tmpdir(), "gw-fallback-"));
 	try {
-		// Copy just the module graph (no node_modules) so the dynamic undici
-		// import fails and the fallback path is exercised.
+		// Copy just the module graph (no real node_modules) so the dynamic
+		// undici import fails and the fallback path is exercised. A broken
+		// local node_modules/undici stub shadows any ambiently resolvable
+		// undici (bundled with newer Node, or an ancestor node_modules), so
+		// the test stays hermetic. Note: a package.json `imports` block
+		// cannot pin bare specifiers (keys must start with `#`), so the stub
+		// is required.
 		for (const f of ["gemini-web.ts", "chrome-cookies.ts", "gemini-web-config.ts", "utils.ts"]) {
 			copyFileSync(join(import.meta.dirname, "..", f), join(dir, f));
 		}
+		const stubDir = join(dir, "node_modules", "undici");
+		mkdirSync(stubDir, { recursive: true });
+		writeFileSync(join(stubDir, "package.json"), JSON.stringify({ name: "undici", version: "0.0.0-stub", type: "module", main: "./index.js" }));
+		writeFileSync(join(stubDir, "index.js"), "throw new Error('stub undici is not importable');");
 		const script = [
 			"import { resolveGeminiFetch } from './gemini-web.ts';",
 			"const f = await resolveGeminiFetch();",

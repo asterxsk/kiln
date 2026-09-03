@@ -7,7 +7,6 @@ import { test } from "node:test";
 
 const geminiApiModuleUrl = new URL("../gemini-api.ts", import.meta.url).href;
 const geminiAdcModuleUrl = new URL("../gemini-adc.ts", import.meta.url).href;
-const geminiSearchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
 
 function runChild(script, env) {
 	const childEnv = { ...process.env };
@@ -48,63 +47,6 @@ function writeAdc(root, extra = {}) {
 		"utf8",
 	);
 }
-
-test("Gemini search uses Vertex AI + ADC bearer auth when geminiAuth is adc", async () => {
-	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gemini-adc-"));
-	await writeAdc(root);
-	await writeFile(
-		join(root, "web-search.json"),
-		JSON.stringify({
-			geminiAuth: "adc",
-			geminiProject: "ai-eng-sandbox",
-			geminiLocation: "global",
-		}) + "\n",
-		"utf8",
-	);
-
-	const child = runChild(`
-		const requests = [];
-		globalThis.fetch = async (url, init = {}) => {
-			const request = { url: String(url), method: init.method ?? "GET", headers: Object.fromEntries(new Headers(init.headers)) };
-			requests.push(request);
-			if (String(url).startsWith("https://oauth2.googleapis.com/token")) {
-				return new Response(JSON.stringify({ access_token: "synthetic-adc-token", expires_in: 3599 }), {
-					status: 200, headers: { "content-type": "application/json" },
-				});
-			}
-			if (String(url).includes(":generateContent")) {
-				return new Response(JSON.stringify({
-					candidates: [{
-						content: { parts: [{ text: "Paris is the capital of France." }] },
-						groundingMetadata: {
-							groundingChunks: [{ web: { uri: "https://en.wikipedia.org/wiki/Paris", title: "Paris" } }],
-						},
-					}],
-				}), { status: 200, headers: { "content-type": "application/json" } });
-			}
-			throw new Error("Unexpected fetch: " + request.url);
-		};
-		const { search } = await import(${JSON.stringify(geminiSearchModuleUrl)});
-		const result = await search("what is the capital of France?", { provider: "gemini" });
-		console.log(JSON.stringify({ result, requests }));
-	`, { HOME: root, USERPROFILE: root, PI_CODING_AGENT_DIR: root, GOOGLE_APPLICATION_CREDENTIALS: join(root, "adc.json") });
-
-	assert.equal(child.status, 0, child.stderr);
-	const output = JSON.parse(child.stdout.trim());
-	assert.ok(output.result, "expected a search result");
-	assert.equal(output.result.answer, "Paris is the capital of France.");
-	assert.equal(output.result.provider, "gemini");
-
-	const tokenRequests = output.requests.filter(r => r.url.startsWith("https://oauth2.googleapis.com/token"));
-	assert.equal(tokenRequests.length, 1, "expected one ADC token exchange");
-	const generateRequests = output.requests.filter(r => r.url.includes(":generateContent"));
-	assert.equal(generateRequests.length, 1);
-
-	const generateRequest = generateRequests[0];
-	assert.equal(generateRequest.url, "https://aiplatform.googleapis.com/v1/projects/ai-eng-sandbox/locations/global/publishers/google/models/gemini-3.6-flash:generateContent");
-	assert.equal(generateRequest.headers["authorization"], "Bearer synthetic-adc-token");
-	assert.ok(!generateRequest.headers["x-goog-api-key"], "must not send an API key in ADC mode");
-});
 
 test("Gemini ADC availability requires geminiAuth adc, project, location, and an ADC file", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gemini-adc-avail-"));
@@ -231,38 +173,6 @@ test("Gemini ADC rejects malformed token success responses", async () => {
 
 	assert.equal(expires.status, 0, expires.stderr);
 	assert.match(JSON.parse(expires.stdout.trim()).error, /Gemini ADC token exchange returned invalid expires_in/);
-});
-
-test("Gemini ADC never leaks the access token in errors", async () => {	const root = await mkdtemp(join(tmpdir(), "pi-web-access-gemini-adc-redact-"));
-	await writeAdc(root);
-	await writeFile(
-		join(root, "web-search.json"),
-		JSON.stringify({ geminiAuth: "adc", geminiProject: "p", geminiLocation: "l" }) + "\n",
-		"utf8",
-	);
-
-	const child = runChild(`
-		globalThis.fetch = async (url, init = {}) => {
-			if (String(url).startsWith("https://oauth2.googleapis.com/token")) {
-				return new Response(JSON.stringify({ access_token: "super-secret-adc-token-12345", expires_in: 3599 }), { status: 200 });
-			}
-			// Vertex returns 500 with a body that maliciously echoes the token.
-			return new Response(JSON.stringify({ error: { message: "boom super-secret-adc-token-12345" } }), { status: 500 });
-		};
-		const { search } = await import(${JSON.stringify(geminiSearchModuleUrl)});
-		let threw = null;
-		try {
-			await search("query", { provider: "gemini" });
-		} catch (err) {
-			threw = String(err.message);
-		}
-		console.log(JSON.stringify({ threw, leak: threw && threw.includes("super-secret-adc-token-12345") }));
-	`, { HOME: root, USERPROFILE: root, PI_CODING_AGENT_DIR: root, GOOGLE_APPLICATION_CREDENTIALS: join(root, "adc.json") });
-
-	assert.equal(child.status, 0, child.stderr);
-	const output = JSON.parse(child.stdout.trim());
-	assert.ok(output.threw, "expected an error");
-	assert.equal(output.leak, false, "access token must not leak in error messages");
 });
 
 test("Gemini ADC classifies only credential rejections as CredentialResolutionError", async () => {

@@ -12,15 +12,7 @@ function runChild(script, env) {
 	for (const key of [
 		"PI_CODING_AGENT_DIR",
 		"XDG_CONFIG_HOME",
-		"OPENAI_API_KEY",
-		"BRAVE_API_KEY",
-		"PARALLEL_API_KEY",
-		"TINYFISH_API_KEY",
-		"TAVILY_API_KEY",
-		"JINA_API_KEY",
 		"EXA_API_KEY",
-		"PERPLEXITY_API_KEY",
-		"GEMINI_API_KEY",
 	]) {
 		delete childEnv[key];
 	}
@@ -33,17 +25,12 @@ function runChild(script, env) {
 	});
 }
 
-test("web_search preserves OpenAI answers even when no sources are returned", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pi-web-access-openai-answer-"));
+test("web_search preserves Exa answers even when no sources are returned", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-access-exa-answer-"));
 	const child = runChild(`
 		globalThis.fetch = async () => new Response(JSON.stringify({
-			output: [
-				{ type: "web_search_call", action: { sources: [] } },
-				{
-					type: "message",
-					content: [{ type: "output_text", text: "Direct answer without citations." }],
-				},
-			],
+			answer: "Direct answer without citations.",
+			citations: [],
 		}), { status: 200, headers: { "content-type": "application/json" } });
 
 		const { default: initializeExtension } = await import(${JSON.stringify(indexUrl)});
@@ -60,15 +47,13 @@ test("web_search preserves OpenAI answers even when no sources are returned", as
 		const webSearch = tools.find((tool) => tool.name === "web_search");
 		const result = await webSearch.execute("call", {
 			query: "answer only",
-			provider: "openai",
-			workflow: "none",
 		});
 		console.log(JSON.stringify({ text: result.content[0].text, details: result.details }));
 	`, {
 		HOME: home,
 		USERPROFILE: home,
 		PI_CODING_AGENT_DIR: home,
-		OPENAI_API_KEY: "openai-test-key",
+		EXA_API_KEY: "exa-test-key",
 	});
 
 	assert.equal(child.status, 0, child.stderr);

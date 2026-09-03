@@ -75,7 +75,7 @@ function buildChildScript(moduleUrl) {
 			tools.map((tool) => tool.name),
 			["web_search", "source_check", "fetch_content", "get_search_content"],
 		);
-		assert.ok(commands.includes("websearch"), "websearch command was not registered");
+		assert.ok(commands.includes("google-account"), "google-account command was not registered");
 		assert.ok(shortcuts.length > 0, "shortcuts were not registered");
 		assert.ok(events.includes("session_start"), "session handlers were not registered");
 		assert.equal(existsSync(markerPath), false, "extract.ts loaded during registration");

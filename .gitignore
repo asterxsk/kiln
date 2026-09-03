@@ -10,17 +10,18 @@
 /tmp/
 /temp/
 
-# Secrets / trust / live session state
+# Secrets / trust / live session state (incl. settings — machine-local, never seed)
 auth.json
 trust.json
+agent/settings.json
 sessions/
 pi-acp/
 models-store.json
 # Local model catalog cache (refreshed by pi, machine-local)
 models.json
 
-# Installed runtime + global bins
-bin/
+# Installed runtime + global bins (root bin/ holds the published kiln CLI — keep it tracked)
+agent/bin/
 node_modules/
 *.log
 
@@ -38,8 +39,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local overrides (untracked files only — agent/settings.json itself is
-# tracked intentionally as the install seed and is unaffected by this)
+# Local overrides (untracked files only)
 web-search.json
 taste/
 taste.md

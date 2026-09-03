@@ -12,14 +12,6 @@ import { extractGitHubIssuePr } from "./github-issue-pr.ts";
 import { isYouTubeURL, isYouTubeEnabled, extractYouTube, extractYouTubeFrame, extractYouTubeFrames, getYouTubeStreamInfo } from "./youtube-extract.ts";
 import { CredentialResolutionError } from "./credential-source.ts";
 import { extractWithUrlContext, extractWithGeminiWeb } from "./gemini-url-context.ts";
-import { extractWithParallel, isParallelAvailable } from "./parallel.ts";
-import { extractWithParallelMcp } from "./parallel-mcp.ts";
-import { extractWithTinyFish, isTinyFishAvailable } from "./tinyfish.ts";
-import { extractWithSearch1API, isSearch1APIAvailable } from "./search1api.ts";
-import { extractWithQuerit, isQueritAvailable } from "./querit.ts";
-import { extractWithKagi, isKagiExtractAvailable } from "./kagi.ts";
-import { extractWithOllama, isOllamaFetchAvailable } from "./ollama.ts";
-import { extractWithFirecrawl, isFirecrawlAvailable } from "./firecrawl.ts";
 import { extractWithBrightDataUnlocker, isBrightDataUnlockerAvailable } from "./brightdata-unlocker.ts";
 import { isVideoFile, extractVideo, extractVideoFrame, getLocalVideoDuration } from "./video-extract.ts";
 import { appendDeclaredWebLinks, discoverDeclaredWebLinks, type DeclaredWebLink } from "./declared-web-links.ts";
@@ -37,11 +29,11 @@ const NON_RECOVERABLE_ERRORS = ["Unsupported content type", "Response too large"
 const MIN_USEFUL_CONTENT = 500;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const WEB_SEARCH_CONFIG_PATH = getWebSearchConfigPath();
-const FETCH_PROVIDERS = ["http", "firecrawl", "jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "parallel-mcp", "brightdata", "gemini"] as const;
+const FETCH_PROVIDERS = ["http", "jina", "brightdata", "gemini"] as const;
 type FetchProvider = typeof FETCH_PROVIDERS[number];
 type FetchRouting = { providers: FetchProvider[]; allowRemoteHostedProviders: boolean };
-const DEFAULT_FETCH_PROVIDER_ORDER: FetchProvider[] = ["http", "firecrawl", "jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "brightdata", "gemini"];
-const REMOTE_HOSTED_FETCH_PROVIDERS = new Set<FetchProvider>(["jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "parallel-mcp", "brightdata", "gemini"]);
+const DEFAULT_FETCH_PROVIDER_ORDER: FetchProvider[] = ["http", "jina", "brightdata", "gemini"];
+const REMOTE_HOSTED_FETCH_PROVIDERS = new Set<FetchProvider>(["jina", "brightdata", "gemini"]);
 
 async function extractWithDefuddle(text: string, url: string): Promise<{ title: string; content: string } | null> {
 	const { Defuddle } = await import("defuddle/node");
@@ -712,14 +704,6 @@ export async function extractContent(
 		return null;
 	};
 
-	let firecrawlError: string | null = null;
-	let tinyfishError: string | null = null;
-	let search1apiError: string | null = null;
-	let queritError: string | null = null;
-	let kagiError: string | null = null;
-	let ollamaError: string | null = null;
-	let parallelError: string | null = null;
-	let parallelMcpError: string | null = null;
 	let brightdataError: string | null = null;
 
 	if (remoteUrl && providerOrder[0] !== "http") {
@@ -736,24 +720,6 @@ export async function extractContent(
 			continue;
 		}
 
-		if (provider === "firecrawl") {
-			try {
-				if (isFirecrawlAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const firecrawlResult = await extractWithFirecrawl(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (firecrawlResult) return withDeclaredLinks(firecrawlResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				firecrawlError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(firecrawlError);
-			}
-			continue;
-		}
 
 		if (provider === "jina") {
 			const jinaResult = await extractWithJinaReader(url, signal, options?.lookup);
@@ -761,111 +727,12 @@ export async function extractContent(
 			continue;
 		}
 
-		if (provider === "tinyfish") {
-			try {
-				if (isTinyFishAvailable()) {
-					const tinyfishResult = await extractWithTinyFish(url, signal, options);
-					if (tinyfishResult) return withDeclaredLinks(tinyfishResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				tinyfishError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(tinyfishError);
-			}
-			continue;
-		}
 
-		if (provider === "search1api") {
-			try {
-				if (isSearch1APIAvailable()) {
-					const search1apiResult = await extractWithSearch1API(url, signal, options);
-					if (search1apiResult) return withDeclaredLinks(search1apiResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				search1apiError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(search1apiError);
-			}
-			continue;
-		}
 
-		if (provider === "querit") {
-			try {
-				if (isQueritAvailable()) {
-					const queritResult = await extractWithQuerit(url, signal, options);
-					if (queritResult) return withDeclaredLinks(queritResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				queritError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(queritError);
-			}
-			continue;
-		}
 
-		if (provider === "kagi") {
-			try {
-				if (isKagiExtractAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const kagiResult = await extractWithKagi(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (kagiResult) return withDeclaredLinks(kagiResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				kagiError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(kagiError);
-			}
-			continue;
-		}
 
-		if (provider === "ollama") {
-			try {
-				if (isOllamaFetchAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const ollamaResult = await extractWithOllama(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (ollamaResult) return withDeclaredLinks(ollamaResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				ollamaError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(ollamaError);
-			}
-			continue;
-		}
 
-		if (provider === "parallel") {
-			try {
-				if (isParallelAvailable()) {
-					const parallelResult = await extractWithParallel(url, signal, options);
-					if (parallelResult) return withDeclaredLinks(parallelResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				parallelError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(parallelError);
-			}
-			continue;
-		}
 
-		if (provider === "parallel-mcp") {
-			try {
-				const parallelMcpResult = await extractWithParallelMcp(url, signal, options);
-				if (parallelMcpResult) return withDeclaredLinks(parallelMcpResult);
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				parallelMcpError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(parallelMcpError);
-			}
-			continue;
-		}
 
 		if (provider === "brightdata") {
 			try {
@@ -915,24 +782,9 @@ export async function extractContent(
 	const searchToolName = options?.toolNames?.webSearch;
 	const guidance = [
 		finalHttpResult?.error ?? "No fetch_content provider returned content",
-		...(firecrawlError ? [`Firecrawl fallback failed: ${firecrawlError}`] : []),
-		...(tinyfishError ? [`TinyFish fallback failed: ${tinyfishError}`] : []),
-		...(search1apiError ? [`Search1API fallback failed: ${search1apiError}`] : []),
-		...(queritError ? [`Querit fallback failed: ${queritError}`] : []),
-		...(kagiError ? [`Kagi fallback failed: ${kagiError}`] : []),
-		...(ollamaError ? [`Ollama fallback failed: ${ollamaError}`] : []),
-		...(parallelError ? [`Parallel fallback failed: ${parallelError}`] : []),
-		...(parallelMcpError ? [`Parallel MCP fallback failed: ${parallelMcpError}`] : []),
 		...(brightdataError ? [`Bright Data fallback failed: ${brightdataError}`] : []),
 		"",
 		"Fallback options:",
-		`  • Set firecrawlBaseUrl in ${WEB_SEARCH_CONFIG_PATH} to a self-hosted Firecrawl instance`,
-		`  • Set tinyfishApiKey in ${WEB_SEARCH_CONFIG_PATH} or TINYFISH_API_KEY`,
-		`  • Set search1apiApiKey in ${WEB_SEARCH_CONFIG_PATH} or SEARCH1API_KEY`,
-		`  • Set queritApiKey in ${WEB_SEARCH_CONFIG_PATH} or QUERIT_API_KEY`,
-		`  • Set kagiApiKey in ${WEB_SEARCH_CONFIG_PATH} or KAGI_API_KEY`,
-		`  • Set ollamaApiKey in ${WEB_SEARCH_CONFIG_PATH} or OLLAMA_API_KEY`,
-		`  • Set parallelApiKey in ${WEB_SEARCH_CONFIG_PATH} or PARALLEL_API_KEY`,
 		`  • Set brightdataApiKey and brightdataUnlockerZone in ${WEB_SEARCH_CONFIG_PATH} or BRIGHTDATA_API_KEY and BRIGHTDATA_UNLOCKER_ZONE`,
 		`  • Set GEMINI_API_KEY in ${WEB_SEARCH_CONFIG_PATH}`,
 		"  • Sign into gemini.google.com in Chrome",
