@@ -33,6 +33,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $script:ClonedTmp = $null
+$script:StartTime = Get-Date
 
 $PiPackage     = "@earendil-works/pi-coding-agent"
 $NodeMinimum   = [version]"22.19.0"
@@ -486,12 +487,16 @@ if ($script:ClonedTmp -and (Test-Path $script:ClonedTmp)) {
   Remove-Item $script:ClonedTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+$elapsed = (Get-Date) - $script:StartTime
+if ($elapsed.TotalSeconds -ge 60) { $elapsedFmt = "{0}m {1}s" -f [int]$elapsed.TotalMinutes, $elapsed.Seconds }
+else { $elapsedFmt = "{0}s" -f [int]$elapsed.TotalSeconds }
+
 Write-Line ""
 if ($ok) {
-  Write-Line "${cgreen}${cbold}  ✓ Setup complete${creset}  ${cdim}→ $targetDir${creset}"
+  Write-Line "${cgreen}${cbold}  ✓ Setup complete${creset}  ${cdim}→ $targetDir · Kiln installed in $elapsedFmt${creset}"
   $piVer2 = try { (pi --version 2>$null).Trim() } catch { $null }
   if ($piVer2) { Write-Line "${cdim}  pi $piVer2  ·  run: pi${creset}" }
 } else {
-  Write-Line "${cyellow}${cbold}  ⚠ Setup finished with warnings${creset}  ${cdim}see $TmpLog${creset}"
+  Write-Line "${cyellow}${cbold}  ⚠ Setup finished with warnings${creset}  ${cdim}in $elapsedFmt · see $TmpLog${creset}"
 }
 Write-Line "${cdim}  log: $TmpLog${creset}`n"

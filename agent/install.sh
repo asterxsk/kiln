@@ -34,6 +34,7 @@ SKIP_PACKAGES=0
 ASSUME_YES=0
 FORCE_LOCAL=0
 CLONED_TMP=""
+START_TS="$(date +%s 2>/dev/null || echo 0)"
 
 # ── mktemp log + trap ──────────────────────────────────────────────────────
 if command -v mktemp >/dev/null 2>&1; then
@@ -478,14 +479,22 @@ else
 fi
 
 # ── summary ─────────────────────────────────────────────────────────────────
+END_TS="$(date +%s 2>/dev/null || echo 0)"
+ELAPSED=$((END_TS - START_TS))
+[ "$ELAPSED" -lt 0 ] 2>/dev/null && ELAPSED=0
+if [ "$ELAPSED" -ge 60 ]; then
+  ELAPSED_FMT="$((ELAPSED / 60))m $((ELAPSED % 60))s"
+else
+  ELAPSED_FMT="${ELAPSED}s"
+fi
 printf "\n"
 if [ "$OK" -eq 1 ]; then
-  printf "${C_GREEN}${C_BOLD}  ✓ Setup complete${C_RESET}  ${C_DIM}→ %s${C_RESET}\n" "$TARGET_DIR"
+  printf "${C_GREEN}${C_BOLD}  ✓ Setup complete${C_RESET}  ${C_DIM}→ %s · Kiln installed in %s${C_RESET}\n" "$TARGET_DIR" "$ELAPSED_FMT"
   if command -v pi >/dev/null 2>&1; then
     PI_VER2="$(pi --version 2>/dev/null | tr -d '\n' | tr -d '\r' || echo "")"
     if [ -n "$PI_VER2" ]; then printf "${C_DIM}  pi %s  ·  run: pi${C_RESET}\n" "$PI_VER2"; fi
   fi
 else
-  printf "${C_YELLOW}${C_BOLD}  ⚠ Setup finished with warnings${C_RESET}  ${C_DIM}see %s${C_RESET}\n" "$TMP_LOG"
+  printf "${C_YELLOW}${C_BOLD}  ⚠ Setup finished with warnings${C_RESET}  ${C_DIM}in %s · see %s${C_RESET}\n" "$ELAPSED_FMT" "$TMP_LOG"
 fi
 printf "${C_DIM}  log: %s${C_RESET}\n\n" "$TMP_LOG"
