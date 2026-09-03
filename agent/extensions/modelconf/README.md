@@ -14,10 +14,11 @@ Tab bar at top highlights the active provider `[provider vis/total]`. Models in 
 
 ## Keybindings
 
-- `Tab` / `Shift-Tab` — switch provider tab (also `←` / `→` as alternative when not in search/glob)
-- `/` — fuzzy search within active tab (filters `provider/modelId name`); `Esc` clears filter, `Enter` keeps filter
+- `Tab` / `Shift-Tab` — switch provider tab (also `←` / `→` as alternative when not in search)
+- `/` — fuzzy search within active tab (filters `provider/modelId name`); `↑` / `↓` / `Home` / `End` navigate while typing, `Esc` clears filter, `Enter` keeps filter
 - `Space` — toggle visibility of selected model (`◉` visible / `○` hidden), marks `● unsaved`
-- `x` — bulk glob/keyword menu scoped to active provider (e.g. `*luna*` or `luna` substring); `Tab` / `i` / `e` switches Include/Exclude, `Enter` applies, `Esc` cancels; preview shows `Matches in <provider>: N` (0 shows warning and blocks apply)
+- `a` — add (show) whatever models are currently visible after search (whole tab when unfiltered)
+- `x` — hide whatever models are currently visible after search (whole tab when unfiltered)
 - `↑` / `↓` or `j` / `k` — navigate list; `Home` / `End` jump
 - `Enter` — save draft to `enabledModels` (writes `undefined` / removes key when all visible, sorted array otherwise); notifies and triggers `ctx.reload()` when available
 - `Esc` / `q` — close; if dirty, prompts `Discard changes? (y/N)`; `y` or `Esc` discards, `n` keeps editing. While filtered, first `Esc` clears filter.
@@ -25,7 +26,6 @@ Tab bar at top highlights the active provider `[provider vis/total]`. Models in 
 ### Empty states
 
 - Fuzzy yields 0 in active tab → `No models match 'q' in <provider>` + `Press Esc to clear filter`
-- Bulk preview 0 → `Matches in <provider>: 0 — nothing to apply`
 
 ### Scrolling & layout
 

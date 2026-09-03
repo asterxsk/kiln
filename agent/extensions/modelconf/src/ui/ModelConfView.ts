@@ -2,7 +2,6 @@ import { applyBulk, toggleInEnabled } from "../persistence.js";
 import type { ModelId } from "../persistence.js";
 import { globToRegExp } from "../glob.js";
 import { fuzzyFilter } from "../fuzzy.js";
-import { filterByGlob } from "../glob.js";
 // Minimal Component type to avoid requiring @earendil-works/pi-tui at build time.
 // We mirror the pi-tui Component contract used by ctx.ui.custom.
 export interface Component {
@@ -333,12 +332,8 @@ export class ModelConfView implements Component, Focusable {
   set focused(v: boolean) {
     this._focused = v;
     if (this.searchInput) this.searchInput.focused = v && this.searchActive;
-    if (this.globInput) this.globInput.focused = v && this.globOpen;
   }
 
-  private globOpen = false;
-  private globAction: "include" | "exclude" = "exclude";
-  private globInput: SimpleSearchInput;
   private lastBulkMessage: string | null = null;
   private lastBulkTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -371,8 +366,6 @@ export class ModelConfView implements Component, Focusable {
         }
       }
     } catch {}
-    this.globInput = new SimpleSearchInput();
-    try { (this.globInput as any).placeholder = "e.g. *luna* or luna"; } catch {}
 
     const all = opts.allModels ?? [];
     this.rows = all.map((m) => {
@@ -580,6 +573,22 @@ export class ModelConfView implements Component, Focusable {
     }
   }
 
+  private applyVisibleBulk(action: "include" | "exclude"): void {
+    const list = this.rowsToShow;
+    if (list.length === 0) return;
+    const ids = list.map((r) => `${r.provider}/${r.modelId}` as ModelId);
+    this.draftEnabled = applyBulk(this.draftEnabled as any, this.allIds as unknown as ModelId[], ids, action) as any;
+    this.rebuildVisibility();
+    const verb = action === "include" ? "Included" : "Excluded";
+    const prov = this.activeProvider ?? "";
+    this.lastBulkMessage = `${verb} ${ids.length} in ${prov}`;
+    if (this.lastBulkTimer) { try { clearTimeout(this.lastBulkTimer); } catch {} }
+    this.lastBulkTimer = setTimeout(() => { this.lastBulkMessage = null; try { this.tui?.requestRender?.(); } catch {} }, 4000) as any;
+    if (this.cursorIndex >= this.rowsToShow.length) this.cursorIndex = Math.max(0, this.rowsToShow.length - 1);
+    if (this.activeProvider) this.perProviderCursor.set(this.activeProvider, this.cursorIndex);
+    try { this.tui?.requestRender?.(); } catch {}
+  }
+
   private rowsToShowForProvider(provider: string): ModelRow[] {
     const base = this.rowsByProvider.get(provider) ?? [];
     if (this.filteredRows !== null) {
@@ -713,84 +722,6 @@ export class ModelConfView implements Component, Focusable {
   }
 
   render(width: number): string[] {
-    if (this.globOpen) {
-      const boxWidth = Math.min(64, Math.max(42, width - 6));
-      const inner = boxWidth - 2;
-      const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2));
-      const pad = " ".repeat(leftPad);
-      let count = 0;
-      try {
-        const curVal: string = ((): string => {
-          const gi: any = this.globInput as any;
-          if (typeof gi.getValue === "function") return gi.getValue();
-          if (typeof gi.value === "string") return gi.value;
-          return String(gi.value ?? "");
-        })();
-        let pat = curVal.trim().replace(/^\/+/, "");
-        if (pat) {
-          const activeBase = this.activeRows;
-          const m = filterByGlob(pat, activeBase, (r) => `${r.provider}/${r.modelId} ${r.name ?? ""}`);
-          count = m.length;
-        } else {
-          count = 0;
-        }
-      } catch { count = 0; }
-      const top = this.safeFg("dim", "┌" + "─".repeat(inner) + "┐");
-      const bottom = this.safeFg("dim", "└" + "─".repeat(inner) + "┘");
-      const side = (innerText: string): string => {
-        const t = this.truncate(innerText, inner);
-        let vw = 0;
-        try { vw = visibleWidthFallback(stripAnsi(t)); } catch { vw = t.length; }
-        const spaces = Math.max(0, inner - vw);
-        return this.safeFg("dim", "│") + t + " ".repeat(spaces) + this.safeFg("dim", "│");
-      };
-      const emptySide = this.safeFg("dim", "│") + " ".repeat(inner) + this.safeFg("dim", "│");
-      const title = this.safeFg("accent", this.safeBold("Bulk glob — include / exclude"));
-      const providerHint = this.activeProvider ? this.safeFg("dim", `in provider: ${this.activeProvider}`) : this.safeFg("dim", "Keyword or glob pattern (e.g. luna or *luna*)");
-      const desc = this.safeFg("dim", "Keyword or glob pattern (e.g. luna or *luna*) — scoped to active provider");
-      let inputInner = "";
-      try {
-        const gi: any = this.globInput as any;
-        let rendered = "";
-        if (typeof gi.render === "function") {
-          const arr = gi.render(Math.max(10, inner - 16));
-          rendered = (arr && arr[0]) ? arr[0] : (gi.value ?? "");
-        } else {
-          rendered = gi.value ?? "";
-        }
-        if (!rendered || !String(rendered).trim()) {
-          rendered = this.safeFg("dim", "e.g. *luna* or luna");
-        }
-        inputInner = `Glob/keyword: [${rendered}]`;
-      } catch {
-        inputInner = "Glob/keyword: [" + this.safeFg("dim", "e.g. *luna* or luna") + "]";
-      }
-      const provLabel = this.activeProvider ?? "unknown";
-      const countLine = count === 0
-        ? this.safeFg("warning", `Matches in ${provLabel}: 0 — nothing to apply`)
-        : this.safeFg("dim", `Matches in ${provLabel}: ${count}`);
-      const incSelected = this.globAction === "include";
-      const excSelected = this.globAction === "exclude";
-      const incLine = incSelected ? this.safeFg("success", "▶ Include (enable)") : this.safeFg("dim", "  Include (enable)");
-      const excLine = excSelected ? this.safeFg("warning", "▶ Exclude (disable)") : this.safeFg("dim", "  Exclude (disable)");
-      const hint = this.safeFg("dim", "↑↓ / Tab switch · Enter apply · Esc cancel  •  / type keyword");
-      const out: string[] = [];
-      out.push("");
-      out.push(pad + top);
-      out.push(pad + side(title));
-      out.push(pad + side(desc));
-      out.push(pad + emptySide);
-      out.push(pad + side(providerHint));
-      out.push(pad + side(inputInner));
-      out.push(pad + side(countLine));
-      out.push(pad + emptySide);
-      out.push(pad + side(incLine));
-      out.push(pad + side(excLine));
-      out.push(pad + emptySide);
-      out.push(pad + side(hint));
-      out.push(pad + bottom);
-      return out.map((l) => this.truncate(l, width));
-    }
     const lines: string[] = [];
     const total = this.rows.length;
     const visible = this.getVisibleCount();
@@ -874,7 +805,7 @@ export class ModelConfView implements Component, Focusable {
     }
     // --- Persistent keybinds footer — always visible at bottom (all binds) ---
     const kb1 = "Tab/⇧Tab  ←→ switch provider │ ↑↓/j k  Home/End navigate │ Space toggle │ / filter";
-    const kb2 = "x bulk glob │ d toggle all in provider │ Enter save │ Esc/q close";
+    const kb2 = "a add visible │ x hide visible │ d toggle provider │ Enter save │ Esc/q close";
     const sep = this.safeFg("dim", " │ ");
     // If terminal is wide enough, show in one line; otherwise split into two
     const oneLine = `${kb1} │ ${kb2}`;
@@ -923,64 +854,6 @@ export class ModelConfView implements Component, Focusable {
       }
       return;
     }
-    if (this.globOpen) {
-      const isEscKitty = data.includes("\x1b[27");
-      const isEscGlob = data === "\x1b" || tryKb("escape") || isEscKitty;
-      const isEnterGlob = data === "\r" || data === "\n" || data === "\r\n" || data.includes("\r") || data.includes("\n") || tryKb("enter") || tryKb("return");
-      if (isEscGlob) {
-        this.globOpen = false;
-        try { (this.globInput as any).focused = false; } catch {}
-        this._focused = true;
-        try { this.tui?.requestRender?.(); } catch {}
-        return;
-      }
-      if (data === "\t" || data === "\x1b[Z") {
-        this.globAction = this.globAction === "exclude" ? "include" : "exclude";
-        try { this.tui?.requestRender?.(); } catch {}
-        return;
-      }
-      if (data === "\x1b[A" || data === "\x1bOA" || data === "\x1b[B" || data === "\x1bOB" || data === "\x1b[D" || data === "\x1bOD" || data === "\x1b[C" || data === "\x1bOC") {
-        this.globAction = this.globAction === "exclude" ? "include" : "exclude";
-        try { this.tui?.requestRender?.(); } catch {}
-        return;
-      }
-
-      if (isEnterGlob) {
-        let pattern = "";
-        try {
-          const gi: any = this.globInput as any;
-          if (typeof gi.getValue === "function") pattern = gi.getValue();
-          else if (typeof gi.value === "string") pattern = gi.value;
-          else pattern = String(gi.value ?? "");
-        } catch { pattern = (this.globInput as any).value ?? ""; }
-        pattern = pattern.trim().replace(/^\/+/, "");
-        if (!pattern) return;
-        let matches: ModelRow[] = [];
-        try { matches = filterByGlob(pattern, this.activeRows, (r) => `${r.provider}/${r.modelId} ${r.name ?? ""}`); } catch { matches = []; }
-        if (matches.length === 0) {
-          try { this.tui?.requestRender?.(); } catch {}
-          return;
-        }
-        const ids = matches.map((r) => `${r.provider}/${r.modelId}` as ModelId);
-        this.draftEnabled = applyBulk(this.draftEnabled as any, this.allIds as unknown as ModelId[], ids, this.globAction) as any;
-        this.rebuildVisibility();
-        this.globOpen = false;
-        try { (this.globInput as any).focused = false; } catch {}
-        this._focused = true;
-        const verb = this.globAction === "include" ? "Included" : "Excluded";
-        const prov = this.activeProvider ?? "";
-        this.lastBulkMessage = `${verb} ${matches.length} in ${prov}`;
-        if (this.lastBulkTimer) { try { clearTimeout(this.lastBulkTimer); } catch {} }
-        this.lastBulkTimer = setTimeout(() => { this.lastBulkMessage = null; try { this.tui?.requestRender?.(); } catch {} }, 4000) as any;
-        if (this.cursorIndex >= this.rowsToShow.length) this.cursorIndex = Math.max(0, this.rowsToShow.length - 1);
-        if (this.activeProvider) this.perProviderCursor.set(this.activeProvider, this.cursorIndex);
-        try { this.tui?.requestRender?.(); } catch {}
-        return;
-      }
-      try { (this.globInput as any).handleInput?.(data); } catch {}
-      try { this.tui?.requestRender?.(); } catch {}
-      return;
-    }
     if (!this.searchActive && data === "/") {
       this.searchActive = true;
       this.searchInput.focused = true;
@@ -994,6 +867,23 @@ export class ModelConfView implements Component, Focusable {
       return;
     }
     if (this.searchActive) {
+      // Arrow/Home/End navigate the filtered list while typing (left/right still edit the query).
+      const navUp = data === "\x1b[A" || data === "\x1bOA" || tryKb("up");
+      const navDown = data === "\x1b[B" || data === "\x1bOB" || tryKb("down");
+      const navHome = data === "\x1b[H" || data === "\x1b[1~" || data === "\x1bOH" || tryKb("home");
+      const navEnd = data === "\x1b[F" || data === "\x1b[4~" || data === "\x1bOF" || tryKb("end");
+      if (navUp || navDown || navHome || navEnd) {
+        const navList = this.rowsToShow;
+        if (navList.length > 0) {
+          if (navUp) this.cursorIndex = (this.cursorIndex - 1 + navList.length) % navList.length;
+          else if (navDown) this.cursorIndex = (this.cursorIndex + 1) % navList.length;
+          else if (navHome) this.cursorIndex = 0;
+          else this.cursorIndex = navList.length - 1;
+          if (this.activeProvider) this.perProviderCursor.set(this.activeProvider, this.cursorIndex);
+        }
+        try { this.tui?.requestRender?.(); } catch {}
+        return;
+      }
       const isEscKitty = data.includes("\x1b[27");
       const isEsc = data === "\x1b" || tryKb("escape") || isEscKitty;
       const isEnter = data === "\r" || data === "\n" || data === "\r\n" || data.includes("\r") || data.includes("\n") || tryKb("enter") || tryKb("return");
@@ -1068,7 +958,7 @@ export class ModelConfView implements Component, Focusable {
       try { this.tui?.requestRender?.(); } catch {}
       return;
     }
-    if (!this.globOpen && !this.searchActive && (data === "d" || data === "D")) {
+    if (!this.searchActive && (data === "d" || data === "D")) {
       const active = this.activeRows;
       if (active.length === 0) return;
       const vis = active.filter((r) => r.visible).length;
@@ -1089,18 +979,12 @@ export class ModelConfView implements Component, Focusable {
       try { this.tui?.requestRender?.(); } catch {}
       return;
     }
-    if (!this.globOpen && !this.searchActive && (data === "x" || data === "X")) {
-      if (this.lastBulkTimer) { try { clearTimeout(this.lastBulkTimer); } catch {} this.lastBulkTimer = null; }
-      this.globOpen = true;
-      this.globAction = "exclude";
-      this._focused = true;
-      try {
-        const gi: any = this.globInput as any;
-        if (typeof gi.setValue === "function") gi.setValue("");
-        else gi.value = "";
-        gi.focused = true;
-      } catch {}
-      try { this.tui?.requestRender?.(); } catch {}
+    if (!this.searchActive && (data === "a" || data === "A")) {
+      this.applyVisibleBulk("include");
+      return;
+    }
+    if (!this.searchActive && (data === "x" || data === "X")) {
+      this.applyVisibleBulk("exclude");
       return;
     }
     const isEscKitty = data.includes("\x1b[27");
@@ -1159,7 +1043,7 @@ export class ModelConfView implements Component, Focusable {
       });
       return;
     }
-    // Left/Right also switch provider (alternative to Tab/Shift-Tab) when not in search/glob
+    // Left/Right also switch provider (alternative to Tab/Shift-Tab) when not in search
     const isLeft = data === "\x1b[D" || data === "\x1bOD" || tryKb("left");
     const isRight = data === "\x1b[C" || data === "\x1bOC" || tryKb("right");
     if (isLeft) {
