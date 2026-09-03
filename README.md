@@ -2,10 +2,12 @@
 
 > A forge-tuned, self-improving `~/.pi/agent` for [pi](https://github.com/badlogic/pi-mono): curated extensions, opinionated defaults, and an installer you can re-run without fear.
 
-[![pi >=0.84.4](https://badges.ws/badge/PI-0.84.4+-8b5cf6?style=for-the-badge&label_color=101418)](https://github.com/badlogic/pi-mono)
-[![node >=22.19](https://badges.ws/badge/NODE-22.19+-8b5cf6?style=for-the-badge&label_color=101418)](https://nodejs.org)
-[![license MIT](https://badges.ws/badge/LICENSE-MIT-8b5cf6?style=for-the-badge&label_color=101418)](LICENSE)
-[![platform](https://badges.ws/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=for-the-badge&label_color=101418)](#quick-start)
+<p align="center">
+  <a href="https://github.com/badlogic/pi-mono"><img src="https://badges.ws/badge/PI-0.84.4+-8b5cf6?style=for-the-badge&label_color=101418" alt="pi >=0.84.4" /></a>
+  <a href="https://nodejs.org"><img src="https://badges.ws/badge/NODE-22.19+-8b5cf6?style=for-the-badge&label_color=101418" alt="node >=22.19" /></a>
+  <a href="LICENSE"><img src="https://badges.ws/badge/LICENSE-MIT-8b5cf6?style=for-the-badge&label_color=101418" alt="license MIT" /></a>
+  <a href="#quick-start"><img src="https://badges.ws/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=for-the-badge&label_color=101418" alt="platform" /></a>
+</p>
 
 Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, eleven curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
 
