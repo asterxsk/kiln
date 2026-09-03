@@ -311,15 +311,31 @@ try {
 
   if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
 
-  # backup (tar-like: copy but exclude heavy dirs)
+  # backup (managed files only: extensions + top-level config files).
+  # Per-user data (settings.json, auth.json, sessions/, taste/, etc.) is never
+  # touched by the installer, so it is deliberately NOT backed up.
   $hasExisting = (Test-Path (Join-Path $targetDir "AGENTS.md")) -or (Test-Path (Join-Path $targetDir "extensions"))
   if ($hasExisting) {
     $bak = "$targetDir.bak.$(Get-Date -Format yyyyMMdd-HHmmss)"
-    Write-Line "${cdim}  backup  $targetDir → $bak${creset}"
-    # Use robocopy-friendly copy excluding node_modules/.git
-    $exclude = @("node_modules","bin",".git")
-    Copy-Item $targetDir $bak -Recurse -Force -Exclude $exclude -ErrorAction SilentlyContinue
-    if (-not (Test-Path $bak)) { Copy-Item $targetDir $bak -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-Line "${cdim}  backup  $targetDir/extensions → $bak${creset}"
+    New-Item -ItemType Directory -Path $bak -Force | Out-Null
+    foreach ($f in @("AGENTS.md","keybindings.json","example-settings.json","README.md")) {
+      $s = Join-Path $targetDir $f
+      if (Test-Path $s) { Copy-Item $s (Join-Path $bak $f) -Force -ErrorAction SilentlyContinue }
+    }
+    $srcBakExt = Join-Path $targetDir "extensions"
+    if (Test-Path $srcBakExt) {
+      # NOTE: Copy-Item -Exclude only filters top-level items, not recursive
+      # contents — copy per-extension while skipping node_modules/.git instead.
+      $dstBakExt = Join-Path $bak "extensions"
+      Get-ChildItem $srcBakExt -Directory | ForEach-Object {
+        $d = Join-Path $dstBakExt $_.Name
+        New-Item -ItemType Directory -Path $d -Force | Out-Null
+        Get-ChildItem $_.FullName -Exclude @("node_modules",".git","bin") | ForEach-Object {
+          Copy-Item $_.FullName $d -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      }
+    }
   }
 
   $copied = 0
