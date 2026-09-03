@@ -47,6 +47,7 @@ Each subfolder is a self-contained pi extension. Pi auto-loads any `extensions/<
 - `artifacts/` — `create_artifact`, `scaffold_artifact`, `render_artifact`, `list_artifacts`, `delete_artifact`, and `check_artifact` tools + `/artifacts` command: save/browse standalone html/md artifacts, opening html in the default browser (with WSL support) and md in a fullscreen reader (with line numbers, arrow cursor selection, inline commenting, and review submission)
 - `compactui/` — Compact tool rendering, responsive wrapping, assistant time tracking footer, tagged thinking dimming, tool status dot, and auto-hide notifications (3s).
 - `context/` — `/context` overlay: token grid breakdown with per-category color-coded visualization
+- `destructive/` — confirms before running deletion commands (`rm`, `del`, `git rm`, `git clean -f`, …): Allow/Deny prompt, blocks by default with no UI
 - `ferment/` — Structured delivery framework (scope, phases, steps) for long-running agent tasks
 - `9router-provider/` — Local/remote 9router AI gateway provider with auto-discovered models and `/login` integration
 - `filechanges/` — `/filechanges` overlay + accept/decline; tracks file modifications per session and exposes counts for the ui-customization footer

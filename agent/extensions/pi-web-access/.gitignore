@@ -1,6 +1,0 @@
-node_modules/
-bun.lock
-.pi/
-.pi-subagents/
-web-search-cache/
-.test-output.log
