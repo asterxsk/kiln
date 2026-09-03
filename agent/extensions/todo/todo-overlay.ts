@@ -23,12 +23,22 @@ const MAX_WIDGET_LINES = 12;
 
 export class TodoOverlay {
 	private uiCtx: ExtensionUIContext | undefined;
+	/** Session whose todos this overlay renders (bound at session_start). */
+	private sessionId: string | undefined;
 	private widgetRegistered = false;
 	private tui: TUI | undefined;
 	private completedTaskIdsPendingHide = new Set<number>();
 	private hiddenCompletedTaskIds = new Set<number>();
 	private lastNextId: number | undefined;
 	private agentTurnActive = false;
+
+	/** Bind the overlay to a session's todo cell (re-bound on session switch). */
+	setSession(sessionId: string): void {
+		if (sessionId !== this.sessionId) {
+			this.sessionId = sessionId;
+			this.resetCompletedDisplayState();
+		}
+	}
 
 	setUICtx(ctx: ExtensionUIContext): void {
 		// Identity-compare so repeat session_start handlers are idempotent;
@@ -115,7 +125,7 @@ export class TodoOverlay {
 	}
 
 	private getSnapshot() {
-		const state = getState();
+		const state = this.sessionId ? getState(this.sessionId) : { tasks: [], nextId: 1 };
 		if (this.lastNextId !== undefined && state.nextId < this.lastNextId) {
 			this.resetCompletedDisplayState();
 		}

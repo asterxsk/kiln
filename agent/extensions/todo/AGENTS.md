@@ -14,7 +14,7 @@ Provides a persistent todo list with overlay widget, slash command, and LLM-call
 - Registers command: `/todos`
 - Widget key: `rpiv-todos` (preserved for compatibility)
 - State replayed from branch on `session_start`, `session_compact`, `session_tree`
-- `replaceState()` and `replayFromBranch()` from state modules
+- `replaceState(sessionId, state)` and `replayFromBranch()` from state modules — the store is keyed by `ctx.sessionManager.getSessionId()` so each session (main or in-process subagent) has an independent todo cell; `dropState(sessionId)` on `session_shutdown` prunes ended sessions
 - Handles stale ctx errors during auto-compaction gracefully
 - Batch items support `as` labels (on create) and `refs` (on subsequent items) for creating and referencing tasks in one call
 

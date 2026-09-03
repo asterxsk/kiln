@@ -46,6 +46,11 @@ const SECTION_COMPLETED = "── Completed ──";
 export { isTransitionValid } from "./state/invariants.js";
 export { applyTaskMutation } from "./state/state-reducer.js";
 export { __resetState, getNextId, getTodos } from "./state/store.js";
+
+/** Resolve the session id that scopes todo state for this ctx. */
+export function sessionIdOf(ctx: { sessionManager: { getSessionId(): string } }): string {
+	return ctx.sessionManager.getSessionId();
+}
 export { deriveBlocks, detectCycle } from "./state/task-graph.js";
 export type { Task, TaskAction, TaskDetails, TaskStatus } from "./tool/types.js";
 export { TOOL_NAME } from "./tool/types.js";
@@ -55,8 +60,10 @@ export { TOOL_NAME } from "./tool/types.js";
  * mutated module state directly; the new replay seam (`state/replay.ts`)
  * returns a `TaskState` and the caller commits via `replaceState`.
  */
-export function reconstructTodoState(ctx: Parameters<typeof replayFromBranch>[0]): void {
-	replaceState(replayFromBranch(ctx));
+export function reconstructTodoState(
+	ctx: Parameters<typeof replayFromBranch>[0] & { sessionManager: { getSessionId(): string } },
+): void {
+	replaceState(sessionIdOf(ctx), replayFromBranch(ctx));
 }
 
 // ---------------------------------------------------------------------------
@@ -83,9 +90,10 @@ export function registerTodoTool(pi: ExtensionAPI): void {
 		promptGuidelines: guidance.promptGuidelines ?? DEFAULT_PROMPT_GUIDELINES,
 		parameters: TodoParamsSchema,
 
-		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const result = applyTaskMutation(getState(), params.action, params as TaskMutationParams);
-			commitState(result.state);
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const sessionId = sessionIdOf(ctx);
+			const result = applyTaskMutation(getState(sessionId), params.action, params as TaskMutationParams);
+			commitState(sessionId, result.state);
 			return buildToolResult(params.action, params as TaskMutationParams, result.state, result.op);
 		},
 
@@ -113,7 +121,7 @@ export function registerTodosCommand(pi: ExtensionAPI): void {
 				ctx.ui.notify(t("command.requires_interactive", ERR_REQUIRES_INTERACTIVE), "error");
 				return;
 			}
-			const state = getState();
+			const state = getState(ctx.sessionManager.getSessionId());
 			const visible = selectVisibleTasks(state);
 			if (visible.length === 0) {
 				ctx.ui.notify(t("command.no_todos", MSG_NO_TODOS), "info");

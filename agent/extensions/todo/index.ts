@@ -22,8 +22,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { I18N_NAMESPACE } from "./state/i18n-bridge.js";
 import { replayFromBranch } from "./state/replay.js";
-import { EMPTY_STATE } from "./state/state.js";
-import { getState, replaceState } from "./state/store.js";
+import { dropState, emptyState, getState, replaceState } from "./state/store.js";
 import { registerTodosCommand, registerTodoTool, TOOL_NAME } from "./todo.js";
 import { TodoOverlay } from "./todo-overlay.js";
 
@@ -66,10 +65,10 @@ export default function (pi: ExtensionAPI) {
 	 * compaction and session transitions. If a future pi-core ordering change
 	 * skips those lifecycle events, completed tasks would reappear.
 	 */
-	function autoClearIfNoActiveTasks(): void {
-		const state = getState();
+	function autoClearIfNoActiveTasks(sessionId: string): void {
+		const state = getState(sessionId);
 		if (!state.tasks.some((t) => t.status === "pending" || t.status === "in_progress")) {
-			replaceState(EMPTY_STATE);
+			replaceState(sessionId, emptyState());
 		}
 	}
 
@@ -77,10 +76,12 @@ export default function (pi: ExtensionAPI) {
 	registerTodosCommand(pi);
 
 	pi.on("session_start", async (_event, ctx) => {
-		replaceState(replayFromBranch(ctx));
-		autoClearIfNoActiveTasks();
+		const sessionId = ctx.sessionManager.getSessionId();
+		replaceState(sessionId, replayFromBranch(ctx));
+		autoClearIfNoActiveTasks(sessionId);
 		if (ctx.hasUI) {
 			todoOverlay ??= new TodoOverlay();
+			todoOverlay.setSession(sessionId);
 			todoOverlay.setUICtx(ctx.ui);
 			todoOverlay.resetCompletedDisplayState();
 			todoOverlay.update();
@@ -95,27 +96,34 @@ export default function (pi: ExtensionAPI) {
 		// state — so keep current state on a stale ctx. Other errors are real
 		// replay bugs and must propagate.
 		try {
-			replaceState(replayFromBranch(ctx));
+			replaceState(ctx.sessionManager.getSessionId(), replayFromBranch(ctx));
 		} catch (e) {
 			if (!isStaleCtxError(e)) throw e;
 		}
-		autoClearIfNoActiveTasks();
+		autoClearIfNoActiveTasks(ctx.sessionManager.getSessionId());
 		todoOverlay?.resetCompletedDisplayState();
 		todoOverlay?.update();
 	});
 
 	pi.on("session_tree", async (_event, ctx) => {
 		try {
-			replaceState(replayFromBranch(ctx));
+			replaceState(ctx.sessionManager.getSessionId(), replayFromBranch(ctx));
 		} catch (e) {
 			if (!isStaleCtxError(e)) throw e;
 		}
-		autoClearIfNoActiveTasks();
+		autoClearIfNoActiveTasks(ctx.sessionManager.getSessionId());
 		todoOverlay?.resetCompletedDisplayState();
 		todoOverlay?.update();
 	});
 
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
+		try {
+			dropState(ctx.sessionManager.getSessionId());
+		} catch (e) {
+			// A stale ctx proxy after session replacement may throw on any getter;
+			// the cell for a replaced session is abandoned regardless.
+			if (!isStaleCtxError(e)) throw e;
+		}
 		todoOverlay?.dispose();
 		todoOverlay = undefined;
 	});
@@ -136,8 +144,8 @@ export default function (pi: ExtensionAPI) {
 	// sets (pendingHide, hiddenCompleted) are still valid for any future logic
 	// in onAgentTurnEnd that references them. The overlay resets its display
 	// state separately at session lifecycle boundaries.
-	pi.on("agent_end", async () => {
-		autoClearIfNoActiveTasks();
+	pi.on("agent_end", async (_event, ctx) => {
+		autoClearIfNoActiveTasks(ctx.sessionManager.getSessionId());
 		todoOverlay?.onAgentTurnEnd();
 	});
 }
