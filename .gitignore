@@ -23,6 +23,7 @@ models.json
 # Installed runtime + global bins (root bin/ holds the published kiln CLI — keep it tracked)
 agent/bin/
 node_modules/
+agent/npm
 *.log
 
 # Local backups created by the installer
