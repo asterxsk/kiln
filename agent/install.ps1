@@ -365,17 +365,20 @@ try {
     if ($isSelfInstall -or $s -eq $d) { $copied++; continue }
     Copy-Item $s $d -Force; $copied++
   }
-  # settings.json: seed from repo defaults if missing, never overwrite
+  # settings.json: seed from repo defaults if missing; an existing file is never modified.
   $repoSettings = Join-Path $sourceRoot "settings.json"
   $settings     = Join-Path $targetDir "settings.json"
+  $settingsJustCreated = $false
   if ((-not (Test-Path $settings)) -and (Test-Path $repoSettings)) {
     Copy-Item $repoSettings $settings
+    $settingsJustCreated = $true
     Write-Line "${cdim}  created settings.json from repo defaults${creset}"
   } elseif (Test-Path $settings) {
     Write-Line "${cdim}  kept existing settings.json${creset}"
   }
-  # ensure Pi extensions (forge + context) are registered — merge into existing settings.json
-  if ((Test-Path $settings) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+  # ensure Pi extensions (forge + context) are registered — only on a freshly
+  # seeded settings.json; an existing file is left completely untouched.
+  if ($settingsJustCreated -and (Test-Path $settings) -and (Get-Command node -ErrorAction SilentlyContinue)) {
     try {
       $patch = "const fs=require('fs');const p=process.argv[1];try{let j=JSON.parse(fs.readFileSync(p,'utf8'));let need=['npm:pi-context-usage','npm:@baretread/pi-forge'];j.packages=j.packages||[];let c=false;for(let pkg of need){if(!j.packages.includes(pkg)){j.packages.push(pkg);c=true}}if(c){fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('  patched settings.json packages -> forge + context') } }catch(e){}"
       node -e $patch $settings 2>$null | ForEach-Object { Write-Line "${cdim}  $_${creset}" }

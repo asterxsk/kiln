@@ -363,15 +363,20 @@ else
       fi
     fi
   done
-  # per-user files: never overwrite — seed from repo defaults if missing, otherwise keep
-  # settings.json
+  # per-user files: never overwrite — seed from repo defaults if missing, otherwise keep.
+  # An existing settings.json is never modified by the setup script.
+  SETTINGS_JUST_CREATED=0
   if [ ! -f "$TARGET_DIR/settings.json" ] && [ -f "$SOURCE_ROOT/settings.json" ]; then
-    cp "$SOURCE_ROOT/settings.json" "$TARGET_DIR/settings.json" 2>/dev/null && printf "${C_DIM}  created settings.json from repo defaults${C_RESET}\n" || true
+    if cp "$SOURCE_ROOT/settings.json" "$TARGET_DIR/settings.json" 2>/dev/null; then
+      printf "${C_DIM}  created settings.json from repo defaults${C_RESET}\n"
+      SETTINGS_JUST_CREATED=1
+    fi
   elif [ -f "$TARGET_DIR/settings.json" ]; then
     printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
   fi
-  # ensure Pi extensions (forge + context) are registered — merge into existing settings.json
-  if [ -f "$TARGET_DIR/settings.json" ] && command -v node >/dev/null 2>&1; then
+  # ensure Pi extensions (forge + context) are registered — only on a freshly
+  # seeded settings.json; an existing file is left completely untouched.
+  if [ "$SETTINGS_JUST_CREATED" = "1" ] && [ -f "$TARGET_DIR/settings.json" ] && command -v node >/dev/null 2>&1; then
     node -e "const fs=require('fs');const p=process.argv[1];try{let j=JSON.parse(fs.readFileSync(p,'utf8'));let need=['npm:pi-context-usage','npm:@baretread/pi-forge'];j.packages=j.packages||[];let c=false;for(let pkg of need){if(!j.packages.includes(pkg)){j.packages.push(pkg);c=true}}if(c){fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');console.log('  patched settings.json packages → forge + context') } }catch(e){}" "$TARGET_DIR/settings.json" 2>/dev/null || true
   fi
   # taste.md / taste/ — user-specific, preserve if exists
