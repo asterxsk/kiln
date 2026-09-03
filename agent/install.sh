@@ -310,8 +310,13 @@ fi
 
 # ── [3/4] custom config ───────────────────────────────────────────────────
 set +e
-SOURCE_ROOT="$(resolve_source_root "$REPO_URL")"
+# NOTE: no command substitution here — resolve_source_root records the clone
+# dir in $CLONED_TMP, which would be lost in a $(...) subshell (that is why
+# ~/.pi/temp was never deleted after install).
+resolve_source_root "$REPO_URL" >"$TMP_LOG.src"
 SRC_CODE=$?
+SOURCE_ROOT="$(cat "$TMP_LOG.src" 2>/dev/null || echo "")"
+rm -f "$TMP_LOG.src" 2>/dev/null || true
 set -e
 if [ $SRC_CODE -ne 0 ] || [ -z "$SOURCE_ROOT" ] || [ ! -d "$SOURCE_ROOT" ]; then
   printf " ${C_RED}✖${C_RESET} ${C_DIM}[3/4]${C_RESET} custom config ${C_RED}failed:${C_RESET} source not found\n"
@@ -329,7 +334,7 @@ else
     printf "${C_DIM}  backup  %s/extensions → %s${C_RESET}\n" "$TARGET_DIR" "$BAK"
     set +e
     mkdir -p "$BAK" 2>/dev/null || true
-    for f in AGENTS.md keybindings.json example-settings.json README.md; do
+    for f in AGENTS.md keybindings.json README.md; do
       [ -f "$TARGET_DIR/$f" ] && cp -f "$TARGET_DIR/$f" "$BAK/$f" 2>/dev/null || true
     done
     if [ -d "$TARGET_DIR/extensions" ]; then
@@ -340,7 +345,7 @@ else
 
   COPIED=0
   set +e
-  for f in AGENTS.md keybindings.json example-settings.json README.md; do
+  for f in AGENTS.md keybindings.json README.md; do
     if [ -f "$SOURCE_ROOT/$f" ]; then
       # Self-install: source == target — no copy needed, just count
       if [ "$SOURCE_ROOT/$f" = "$TARGET_DIR/$f" ] || [ "$SOURCE_ROOT" = "$TARGET_DIR" ]; then
@@ -350,10 +355,10 @@ else
       fi
     fi
   done
-  # per-user files: never overwrite — create from example if missing, otherwise keep
+  # per-user files: never overwrite — seed from repo defaults if missing, otherwise keep
   # settings.json
-  if [ ! -f "$TARGET_DIR/settings.json" ] && [ -f "$TARGET_DIR/example-settings.json" ]; then
-    cp "$TARGET_DIR/example-settings.json" "$TARGET_DIR/settings.json" 2>/dev/null && printf "${C_DIM}  created settings.json from example-settings.json${C_RESET}\n" || true
+  if [ ! -f "$TARGET_DIR/settings.json" ] && [ -f "$SOURCE_ROOT/settings.json" ]; then
+    cp "$SOURCE_ROOT/settings.json" "$TARGET_DIR/settings.json" 2>/dev/null && printf "${C_DIM}  created settings.json from repo defaults${C_RESET}\n" || true
   elif [ -f "$TARGET_DIR/settings.json" ]; then
     printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
   fi
@@ -411,6 +416,12 @@ else
   if [ -n "$CLONED_TMP" ] && [ -d "$CLONED_TMP" ] && [ "$CLONED_TMP" = "$HOME/.pi/temp" ]; then
     rm -rf "$CLONED_TMP" 2>/dev/null || true
     CLONED_TMP=""
+  fi
+  # repo README → alongside the agent dir (e.g. ~/.pi/README.md)
+  REPO_ROOT="$(cd "$SOURCE_ROOT/.." 2>/dev/null && pwd 2>/dev/null || echo "")"
+  TARGET_PARENT="$(cd "$(dirname "$TARGET_DIR")" 2>/dev/null && pwd 2>/dev/null || echo "")"
+  if [ -n "$REPO_ROOT" ] && [ -f "$REPO_ROOT/README.md" ] && [ -n "$TARGET_PARENT" ] && [ "$REPO_ROOT" != "$TARGET_PARENT" ]; then
+    cp -f "$REPO_ROOT/README.md" "$TARGET_PARENT/README.md" 2>/dev/null || true
   fi
 fi
 

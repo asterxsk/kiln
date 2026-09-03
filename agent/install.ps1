@@ -319,7 +319,7 @@ try {
     $bak = "$targetDir.bak.$(Get-Date -Format yyyyMMdd-HHmmss)"
     Write-Line "${cdim}  backup  $targetDir/extensions → $bak${creset}"
     New-Item -ItemType Directory -Path $bak -Force | Out-Null
-    foreach ($f in @("AGENTS.md","keybindings.json","example-settings.json","README.md")) {
+    foreach ($f in @("AGENTS.md","keybindings.json","README.md")) {
       $s = Join-Path $targetDir $f
       if (Test-Path $s) { Copy-Item $s (Join-Path $bak $f) -Force -ErrorAction SilentlyContinue }
     }
@@ -341,19 +341,19 @@ try {
   $copied = 0
   $isSelfInstall = ($sourceRoot -eq $targetDir)
   if ($isSelfInstall) { Write-Line "${cdim}  source == target — skipping file copy (self-install)${creset}" }
-  foreach ($f in @("AGENTS.md","keybindings.json","example-settings.json","README.md")) {
+  foreach ($f in @("AGENTS.md","keybindings.json","README.md")) {
     $s = Join-Path $sourceRoot $f
     if (-not (Test-Path $s)) { continue }
     $d = Join-Path $targetDir $f
     if ($isSelfInstall -or $s -eq $d) { $copied++; continue }
     Copy-Item $s $d -Force; $copied++
   }
-  # settings.json: create from example if missing, never overwrite
-  $exSettings = Join-Path $targetDir "example-settings.json"
-  $settings   = Join-Path $targetDir "settings.json"
-  if (-not (Test-Path $settings) -and (Test-Path $exSettings)) {
-    Copy-Item $exSettings $settings
-    Write-Line "${cdim}  created settings.json from example-settings.json${creset}"
+  # settings.json: seed from repo defaults if missing, never overwrite
+  $repoSettings = Join-Path $sourceRoot "settings.json"
+  $settings     = Join-Path $targetDir "settings.json"
+  if ((-not (Test-Path $settings)) -and (Test-Path $repoSettings)) {
+    Copy-Item $repoSettings $settings
+    Write-Line "${cdim}  created settings.json from repo defaults${creset}"
   } elseif (Test-Path $settings) {
     Write-Line "${cdim}  kept existing settings.json${creset}"
   }
@@ -413,6 +413,13 @@ try {
       Remove-Item $script:ClonedTmp -Recurse -Force -ErrorAction SilentlyContinue
       $script:ClonedTmp = $null
     }
+  }
+  # repo README → alongside the agent dir (e.g. ~/.pi/README.md)
+  $repoRoot = Split-Path $sourceRoot -Parent
+  $targetParent = Split-Path $targetDir -Parent
+  $repoReadme = Join-Path $repoRoot "README.md"
+  if ((Test-Path $repoReadme) -and ($repoRoot -ne $targetParent)) {
+    Copy-Item $repoReadme (Join-Path $targetParent "README.md") -Force -ErrorAction SilentlyContinue
   }
 } catch {
   Write-Line " ${cred}✖${creset} ${cdim}[3/4]${creset} custom config ${cred}failed:${creset} $($_.Exception.Message)"

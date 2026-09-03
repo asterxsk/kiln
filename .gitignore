@@ -1,7 +1,9 @@
 # ── Pi config repo — publish-safe .gitignore ──────────────────────────────
-# Only these are tracked (see publish allowlist):
-#   agent/extensions, agent/example-settings.json, agent/keybindings.json,
-#   agent/AGENTS.md, agent/README.md
+# Only these are tracked:
+#   README.md, agent/AGENTS.md, agent/README.md, agent/settings.json
+#   (canonical defaults — never overwritten on install),
+#   agent/keybindings.json, agent/install.sh, agent/install.ps1,
+#   agent/extensions
 # Everything below is local/secret/build and MUST NOT be committed.
 
 # Secrets / trust / live session state
@@ -10,6 +12,8 @@ trust.json
 sessions/
 pi-acp/
 models-store.json
+# Local model catalog cache (refreshed by pi, machine-local)
+models.json
 
 # Installed runtime + global bins
 bin/
@@ -30,7 +34,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local overrides
-settings.json
+# Local overrides (untracked files only — agent/settings.json itself is
+# tracked intentionally as the install seed and is unaffected by this)
 web-search.json
 taste/
+taste.md
+taste.json
