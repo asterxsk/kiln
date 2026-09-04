@@ -14,9 +14,14 @@
   powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 -UseBasicParsing | iex"
   .\install.ps1 -RepoUrl https://github.com/asterxsk/kiln -Branch main
   .\install.ps1 -Target "$env:USERPROFILE\.pi\agent" -Yes
+  .\install.ps1 -OverwriteSettings   # replace settings.json (asks by default)
 
 .NOTES
-  Safe to re-run. Managed files are force-overwritten; per-user files (settings.json, taste.md, etc.) are preserved.
+  Safe to re-run. Managed files are force-overwritten; per-user files (settings.json, taste.md, etc.) are preserved
+  unless -OverwriteSettings is passed or you answer Y when asked.
+  Already-installed items are skipped; outdated global packages are updated.
+  Only one timestamped backup (<target>.bak.*) is kept; the clone temp dir
+  under ~/.pi/tmp/kiln-* is always removed.
 #>
 
 param(
@@ -26,7 +31,9 @@ param(
   [switch]$SkipPi,
   [switch]$SkipPackages,
   [switch]$Yes,
-  [switch]$Local
+  [switch]$Local,
+  [switch]$OverwriteSettings,
+  [switch]$KeepSettings
 )
 
 $ErrorActionPreference = "Stop"
@@ -241,6 +248,38 @@ function Test-Node {
   try { $v = (node --version 2>$null).Trim().TrimStart('v').Split('-')[0]; return [version]$v } catch { return $null }
 }
 
+# Installed global version of a package ("" when not installed).
+function Get-GlobalPkgVersion {
+  param([string]$Name)
+  try {
+    $bin = Resolve-Npm
+    $out = & $bin ls -g $Name --depth=0 2>$null | Out-String
+    $m = [regex]::Match($out, [regex]::Escape($Name) + '@(\S+)')
+    if ($m.Success) { return ($m.Groups[1].Value -replace '[^0-9A-Za-z.+-].*$','') }
+  } catch {}
+  return ""
+}
+# Latest registry version ("" when offline / unknown).
+function Get-LatestPkgVersion {
+  param([string]$Name)
+  try {
+    $bin = Resolve-Npm
+    $v = ((& $bin view $Name version 2>$null | Out-String).Trim() -split '\s+')[0]
+    if ($v -match '^[0-9][0-9A-Za-z.+-]*$') { return $v }
+  } catch {}
+  return ""
+}
+# Returns $true when the user wants settings.json overwritten.
+function Test-WantOverwriteSettings {
+  if ($OverwriteSettings) { return $true }
+  if ($KeepSettings) { return $false }
+  if ($Yes) { return $false }
+  try {
+    $ans = Read-Host "  settings.json exists. Overwrite with repo defaults? [y/N] (Recommended for first-time setup)"
+    return ($ans -eq 'y' -or $ans -eq 'Y' -or $ans -eq 'yes' -or $ans -eq 'YES')
+  } catch { return $false }
+}
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 "" | Set-Content $TmpLog
 # Cleanup trap
@@ -281,6 +320,31 @@ $NpmBin = Resolve-Npm
 # ── [1/4] pi ────────────────────────────────────────────────────────────────
 if ($SkipPi) {
   Write-Line " ${cgreen}✔${creset} ${cdim}[1/4]${creset} Install pi ${cdim}— skipped${creset}"
+} elseif (Get-Command pi -ErrorAction SilentlyContinue) {
+  $piInstalled = Get-GlobalPkgVersion $PiPackage
+  if (-not $piInstalled) { $piInstalled = try { (pi --version 2>$null).Trim().TrimStart('v') } catch { "" } }
+  $piLatest = Get-LatestPkgVersion $PiPackage
+  if ($piInstalled -and $piLatest -and ($piInstalled -eq $piLatest)) {
+    Write-Line " ${cgreen}✔${creset} ${cdim}[1/4]${creset} pi ${cdim}— already installed ($piInstalled), skipping${creset}"
+  } elseif ($piInstalled -and -not $piLatest) {
+    Write-Line " ${cgreen}✔${creset} ${cdim}[1/4]${creset} pi ${cdim}— already installed ($piInstalled), skipping version check (offline)${creset}"
+  } else {
+    if ($piInstalled -and $piLatest) { $label = "updating pi $piInstalled → $piLatest ($PiPackage)" } else { $label = "installing pi ($PiPackage)" }
+    $code = Invoke-NativeWithSpinner -Step "1" -Label $label -FilePath $NpmBin -ArgumentList @("install","-g","$PiPackage@latest","--no-audit","--no-fund","--min-release-age=0")
+    if ($code -eq 0) {
+      $piVer = try { (pi --version 2>$null).Trim() } catch { "?" }
+      Write-Line " ${cgreen}✔${creset} ${cdim}[1/4]${creset} $label ${cdim}— $piVer${creset}"
+    } else {
+      $isPerm = Select-String -Path $TmpLog -Pattern "EACCES|permission" -Quiet -ErrorAction SilentlyContinue
+      if ($isPerm) {
+        Write-Line " ${cred}✖${creset} ${cdim}[1/4]${creset} $label ${cred}permission denied${creset}"
+        Write-Line "    ${cdim}try: npm config set prefix ~/.npm-global  or run as admin${creset}"
+      } else {
+        Write-Line " ${cred}✖${creset} ${cdim}[1/4]${creset} $label ${cred}failed (exit $code)${creset}  ${cdim}see $TmpLog${creset}"
+      }
+      $ok = $false
+    }
+  }
 } else {
   $hasPi = $null -ne (Get-Command pi -ErrorAction SilentlyContinue)
   $label = if ($hasPi) { "updating pi ($PiPackage)" } else { "installing pi ($PiPackage)" }
@@ -304,8 +368,24 @@ if ($SkipPi) {
 if ($SkipPackages) {
   Write-Line " ${cgreen}✔${creset} ${cdim}[2/4]${creset} pi packages ${cdim}— skipped${creset}"
 } else {
-  $label = "installing pi-context-usage + @baretread/pi-forge"
-  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath $NpmBin -ArgumentList @("install","-g","pi-context-usage@latest","@baretread/pi-forge@latest","--no-audit","--no-fund")
+  $need = @()
+  foreach ($pkgName in @("pi-context-usage","@baretread/pi-forge")) {
+    $inst = Get-GlobalPkgVersion $pkgName
+    $latest = Get-LatestPkgVersion $pkgName
+    if ($inst -and $latest -and ($inst -eq $latest)) {
+      Write-Line "${cdim}  · $pkgName@$inst already installed, skipping${creset}"
+    } elseif ($inst -and -not $latest) {
+      Write-Line "${cdim}  · $pkgName@$inst already installed, skipping version check (offline)${creset}"
+    } else {
+      if ($inst) { Write-Line "${cdim}  · $pkgName $inst → $(if ($latest) { $latest } else { 'latest' }) — will update${creset}" }
+      $need += "$pkgName@latest"
+    }
+  }
+  if ($need.Count -eq 0) {
+    Write-Line " ${cgreen}✔${creset} ${cdim}[2/4]${creset} pi packages ${cdim}— already installed, skipping${creset}"
+  } else {
+  $label = "installing $($need -join ' ')"
+  $code = Invoke-NativeWithSpinner -Step "2" -Label $label -FilePath $NpmBin -ArgumentList (@("install","-g") + $need + @("--no-audit","--no-fund"))
   if ($code -eq 0) {
     # Verify global ls (handles mise/nvm prefix quirks)
     $hasCtx = $null -ne (npm ls -g pi-context-usage 2>$null | Select-String "pi-context-usage")
@@ -317,6 +397,7 @@ if ($SkipPackages) {
   } else {
     Write-Line " ${cyellow}⚠${creset} ${cdim}[2/4]${creset} $label ${cyellow}exit $code — continuing (pi will auto-install)${creset}"
     Write-Line "    ${cdim}see $TmpLog${creset}"
+  }
   }
 }
 
@@ -331,6 +412,7 @@ try {
   # backup (managed files only: extensions + top-level config files).
   # Per-user data (settings.json, auth.json, sessions/, taste/, etc.) is never
   # touched by the installer, so it is deliberately NOT backed up.
+  $bak = $null
   $hasExisting = (Test-Path (Join-Path $targetDir "AGENTS.md")) -or (Test-Path (Join-Path $targetDir "extensions"))
   if ($hasExisting) {
     $bak = "$targetDir.bak.$(Get-Date -Format yyyyMMdd-HHmmss)"
@@ -355,6 +437,16 @@ try {
     }
   }
 
+  # only one backup at a time — delete older siblings, keep the newest
+  if ($bak) {
+    $bakKeep = Split-Path $bak -Leaf
+    $bakBase = Split-Path $targetDir -Leaf
+    $bakParent = Split-Path $targetDir -Parent
+    Get-ChildItem $bakParent -Directory -Filter "$bakBase.bak.*" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -ne $bakKeep } |
+      ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+
   $copied = 0
   $isSelfInstall = ($sourceRoot -eq $targetDir)
   if ($isSelfInstall) { Write-Line "${cdim}  source == target — skipping file copy (self-install)${creset}" }
@@ -365,7 +457,8 @@ try {
     if ($isSelfInstall -or $s -eq $d) { $copied++; continue }
     Copy-Item $s $d -Force; $copied++
   }
-  # settings.json: seed from repo defaults if missing; an existing file is never modified.
+  # settings.json: seed from repo defaults if missing; otherwise keep,
+  # unless -OverwriteSettings is passed or the user answers Y.
   $repoSettings = Join-Path $sourceRoot "settings.json"
   $settings     = Join-Path $targetDir "settings.json"
   $settingsJustCreated = $false
@@ -374,7 +467,14 @@ try {
     $settingsJustCreated = $true
     Write-Line "${cdim}  created settings.json from repo defaults${creset}"
   } elseif (Test-Path $settings) {
-    Write-Line "${cdim}  kept existing settings.json${creset}"
+    if ((Test-WantOverwriteSettings) -and (Test-Path $repoSettings)) {
+      if ($bak) { Copy-Item $settings (Join-Path $bak "settings.json") -Force -ErrorAction SilentlyContinue }
+      Copy-Item $repoSettings $settings -Force
+      $settingsJustCreated = $true
+      Write-Line "${cdim}  overwrote settings.json from repo defaults${creset}"
+    } else {
+      Write-Line "${cdim}  kept existing settings.json${creset}"
+    }
   }
   # ensure Pi extensions (forge + context) are registered — only on a freshly
   # seeded settings.json; an existing file is left completely untouched.
@@ -440,6 +540,10 @@ try {
       $script:ClonedTmp = $null
     }
   }
+  # delete any leftover kiln-* temp dirs from interrupted runs
+  Get-ChildItem $PiTmp -Directory -Filter "kiln-*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -ne $script:ClonedTmp } |
+    ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
   # repo README → alongside the agent dir (e.g. ~/.pi/README.md)
   $repoRoot = Split-Path $sourceRoot -Parent
   $targetParent = Split-Path $targetDir -Parent
@@ -465,8 +569,14 @@ try {
   } else {
     $failed = @()
     $installed = 0
+    $skipped = 0
     foreach ($ext in $exts) {
       $label = "extensions/$($ext.Name)"
+      if (Test-Path (Join-Path $ext.FullName "node_modules")) {
+        Write-Line " ${cdim}  · $label — already installed, skipping${creset}"
+        $skipped++
+        continue
+      }
       $ps1 = Join-Path $ext.FullName "install.ps1"
       $sh  = Join-Path $ext.FullName "install.sh"
       $hasPkg = Test-Path (Join-Path $ext.FullName "package.json")
@@ -497,7 +607,7 @@ try {
       }
     }
     if ($failed.Count -eq 0) {
-      Write-Line " ${cgreen}✔${creset} ${cdim}[4/4]${creset} extension deps ${cdim}— $installed installed${creset}"
+      Write-Line " ${cgreen}✔${creset} ${cdim}[4/4]${creset} extension deps ${cdim}— $installed installed, $skipped skipped${creset}"
     } else {
       Write-Line " ${cyellow}⚠${creset} ${cdim}[4/4]${creset} extension deps ${cyellow}$($failed.Count) failed:${creset} $($failed -join ', ')  ${cdim}see $TmpLog${creset}"
     }

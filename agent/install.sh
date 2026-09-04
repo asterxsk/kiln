@@ -14,7 +14,11 @@
 #   ./install.sh --local  # force local checkout, skip clone
 #
 # Safe to re-run. Managed files are force-overwritten; per-user files
-# (settings.json, taste.md, taste/, auth.json, trust.json, sessions/, etc.) are preserved.
+# (settings.json, taste.md, taste/, auth.json, trust.json, sessions/, etc.) are preserved
+# (pass --overwrite-settings to replace settings.json — otherwise you are asked).
+# Already-installed items are skipped; outdated global packages are updated.
+# Only one timestamped backup (<target>.bak.*) is kept; the clone temp dir
+# under ~/.pi/tmp/kiln-* is always removed.
 
 set -eu
 
@@ -33,6 +37,7 @@ SKIP_PI=0
 SKIP_PACKAGES=0
 ASSUME_YES=0
 FORCE_LOCAL=0
+SETTINGS_MODE="ask" # ask | overwrite | keep
 CLONED_TMP=""
 START_TS="$(date +%s 2>/dev/null || echo 0)"
 
@@ -57,8 +62,10 @@ while [ $# -gt 0 ]; do
     --skip-pi) SKIP_PI=1; shift;;
     --skip-packages) SKIP_PACKAGES=1; shift;;
     --local) FORCE_LOCAL=1; shift;;
+    --overwrite-settings) SETTINGS_MODE="overwrite"; shift;;
+    --keep-settings) SETTINGS_MODE="keep"; shift;;
     --yes|-y) ASSUME_YES=1; shift;;
-    --help|-h) echo "Usage: $0 [--repo URL] [--branch BRANCH] [--target DIR] [--local] [--skip-pi] [--skip-packages] [--yes]"; exit 0;;
+    --help|-h) echo "Usage: $0 [--repo URL] [--branch BRANCH] [--target DIR] [--local] [--overwrite-settings|--keep-settings] [--yes]"; exit 0;;
     --) shift; break;;
     -*) echo "unknown arg: $1" >&2; exit 1;;
     *) break;;
@@ -217,6 +224,44 @@ version_ge() {
   [ "$(printf "%s\n%s" "$HAVE" "$MIN" | sort 2>/dev/null | head -n1)" = "$MIN" ] && return 0 || return 1
 }
 
+# Installed global version of a package ("" when not installed).
+npm_global_ver() {
+  npm ls -g "$1" --depth=0 2>/dev/null | grep -F "$1@" | sed -n 's|.*@\([0-9][0-9A-Za-z.+_-]*\).*|\1|p' | head -n1 | tr -d '\r\n '
+}
+# Latest registry version ("" when offline / unknown).
+npm_latest_ver() {
+  _v="$(npm view "$1" version 2>/dev/null | head -n1 | tr -d '\r\n ')"
+  case "$_v" in [0-9]*) printf "%s" "$_v";; *) printf "";; esac
+}
+# Keep only the newest sibling backup (<target>.bak.*); delete the rest.
+prune_backups() {
+  _pb_keep="$(basename "$2")"
+  for _pb_d in "$(dirname "$1")"/"$(basename "$1")".bak.*; do
+    [ -e "$_pb_d" ] || continue
+    [ "$(basename "$_pb_d")" = "$_pb_keep" ] && continue
+    rm -rf "$_pb_d" 2>/dev/null || true
+  done
+}
+# Remove stale clone dirs (~/.pi/tmp/kiln-*) except the active one.
+sweep_stale_tmp() {
+  for _sw_d in "$TMP_BASE"/kiln-*; do
+    [ -e "$_sw_d" ] || continue
+    [ -d "$_sw_d" ] || continue
+    case "$CLONED_TMP" in "$_sw_d") continue;; esac
+    rm -rf "$_sw_d" 2>/dev/null || true
+  done
+}
+# Returns 0 when the user wants settings.json overwritten, 1 to keep.
+want_overwrite_settings() {
+  if [ "$SETTINGS_MODE" = "overwrite" ]; then return 0; fi
+  if [ "$SETTINGS_MODE" = "keep" ]; then return 1; fi
+  if [ "$ASSUME_YES" -eq 1 ]; then return 1; fi
+  if [ ! -t 0 ] && [ ! -r /dev/tty ]; then return 1; fi
+  printf "  settings.json exists. Overwrite with repo defaults? [y/N] (Recommended for first-time setup) "
+  _ans=""; read -r _ans < /dev/tty 2>/dev/null || read -r _ans 2>/dev/null || _ans=""
+  case "$_ans" in [yY]|[yY][eE][sS]) return 0;; *) return 1;; esac
+}
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 write_title
 
@@ -273,6 +318,35 @@ printf "${C_DIM}  node %s  ·  npm %s  ·  %s${C_RESET}\n\n" "$NODE_VER" "$NPM_V
 # ── [1/4] pi ────────────────────────────────────────────────────────────────
 if [ "$SKIP_PI" -eq 1 ]; then
   printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[1/4]${C_RESET} Install pi ${C_DIM}— skipped${C_RESET}\n"
+elif command -v pi >/dev/null 2>&1; then
+  PI_INSTALLED="$(npm_global_ver "$PI_PACKAGE")"
+  if [ -z "$PI_INSTALLED" ]; then PI_INSTALLED="$(pi --version 2>/dev/null | tr -d '\n' | tr -d '\r' | sed 's/^v//')"; fi
+  PI_LATEST="$(npm_latest_ver "$PI_PACKAGE")"
+  if [ -n "$PI_INSTALLED" ] && [ -n "$PI_LATEST" ] && [ "$PI_INSTALLED" = "$PI_LATEST" ]; then
+    printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[1/4]${C_RESET} pi ${C_DIM}— already installed (%s), skipping${C_RESET}\n" "$PI_INSTALLED"
+  elif [ -n "$PI_INSTALLED" ] && [ -z "$PI_LATEST" ]; then
+    printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[1/4]${C_RESET} pi ${C_DIM}— already installed (%s), skipping version check (offline)${C_RESET}\n" "$PI_INSTALLED"
+  else
+    if [ -n "$PI_INSTALLED" ] && [ -n "$PI_LATEST" ]; then LABEL="updating pi $PI_INSTALLED → $PI_LATEST ($PI_PACKAGE)"; else LABEL="installing pi ($PI_PACKAGE)"; fi
+    set +e
+    run_with_spinner "1" "$LABEL" npm install -g "$PI_PACKAGE@latest" --no-audit --no-fund --min-release-age=0
+    CODE=$?
+    set -e
+    if [ $CODE -eq 0 ]; then
+      PI_VER="$(pi --version 2>/dev/null | tr -d '\n' | tr -d '\r' || echo "?")"
+      printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[1/4]${C_RESET} %s ${C_DIM}— %s${C_RESET}\n" "$LABEL" "$PI_VER"
+    else
+      # Check for EACCES
+      if grep -q "EACCES\|permission" "$TMP_LOG" 2>/dev/null; then
+        printf " ${C_RED}✖${C_RESET} ${C_DIM}[1/4]${C_RESET} %s ${C_RED}failed (permission)${C_RESET}\n" "$LABEL"
+        printf "    ${C_DIM}try: sudo npm install -g %s  or  npm config set prefix ~/.npm-global${C_RESET}\n" "$PI_PACKAGE"
+      else
+        printf " ${C_RED}✖${C_RESET} ${C_DIM}[1/4]${C_RESET} %s ${C_RED}failed (exit %s)${C_RESET}  ${C_DIM}see %s${C_RESET}\n" "$LABEL" "$CODE" "$TMP_LOG"
+      fi
+      printf "    ${C_DIM}see %s${C_RESET}\n" "$TMP_LOG"
+      OK=0
+    fi
+  fi
 else
   if command -v pi >/dev/null 2>&1; then LABEL="updating pi ($PI_PACKAGE)"; else LABEL="installing pi ($PI_PACKAGE)"; fi
   set +e
@@ -299,9 +373,26 @@ fi
 if [ "$SKIP_PACKAGES" -eq 1 ]; then
   printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[2/4]${C_RESET} pi packages ${C_DIM}— skipped${C_RESET}\n"
 else
-  LABEL="installing pi-context-usage + @baretread/pi-forge"
+  NEED=""
+  for _pkg in pi-context-usage @baretread/pi-forge; do
+    _inst="$(npm_global_ver "$_pkg")"
+    _latest="$(npm_latest_ver "$_pkg")"
+    if [ -n "$_inst" ] && [ -n "$_latest" ] && [ "$_inst" = "$_latest" ]; then
+      printf "${C_DIM}  · %s@%s already installed, skipping${C_RESET}\n" "$_pkg" "$_inst"
+    elif [ -n "$_inst" ] && [ -z "$_latest" ]; then
+      printf "${C_DIM}  · %s@%s already installed, skipping version check (offline)${C_RESET}\n" "$_pkg" "$_inst"
+    else
+      if [ -n "$_inst" ]; then printf "${C_DIM}  · %s %s → %s — will update${C_RESET}\n" "$_pkg" "$_inst" "${_latest:-latest}"; fi
+      NEED="$NEED $_pkg@latest"
+    fi
+  done
+  if [ -z "$NEED" ]; then
+    printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[2/4]${C_RESET} pi packages ${C_DIM}— already installed, skipping${C_RESET}\n"
+  else
+  LABEL="installing$NEED"
   set +e
-  run_with_spinner "2" "$LABEL" npm install -g pi-context-usage@latest @baretread/pi-forge@latest --no-audit --no-fund
+  # shellcheck disable=SC2086
+  run_with_spinner "2" "$LABEL" npm install -g $NEED --no-audit --no-fund
   CODE=$?
   set -e
   if [ $CODE -eq 0 ]; then
@@ -313,6 +404,7 @@ else
   else
     printf " ${C_YELLOW}⚠${C_RESET} ${C_DIM}[2/4]${C_RESET} %s ${C_YELLOW}exit %s — continuing (pi will auto-install)${C_RESET}\n" "$LABEL" "$CODE"
     printf "    ${C_DIM}see %s${C_RESET}\n" "$TMP_LOG"
+  fi
   fi
 fi
 
@@ -337,6 +429,7 @@ else
   # backup (managed files only: extensions + top-level config files).
   # Per-user data (settings.json, auth.json, sessions/, taste/, etc.) is never
   # touched by the installer, so it is deliberately NOT backed up.
+  BAK=""
   if [ -f "$TARGET_DIR/AGENTS.md" ] || [ -d "$TARGET_DIR/extensions" ]; then
     BAK="$TARGET_DIR.bak.$(date +%Y%m%d-%H%M%S 2>/dev/null || echo $$)"
     printf "${C_DIM}  backup  %s/extensions → %s${C_RESET}\n" "$TARGET_DIR" "$BAK"
@@ -349,6 +442,7 @@ else
       copy_tree "$TARGET_DIR/extensions" "$BAK/extensions" || printf "${C_YELLOW}  ⚠ backup extensions failed${C_RESET}\n"
     fi
     set -e
+    prune_backups "$TARGET_DIR" "$BAK" # only one backup at a time
   fi
 
   COPIED=0
@@ -363,8 +457,8 @@ else
       fi
     fi
   done
-  # per-user files: never overwrite — seed from repo defaults if missing, otherwise keep.
-  # An existing settings.json is never modified by the setup script.
+  # per-user files: seed from repo defaults if missing; otherwise keep,
+  # unless --overwrite-settings is passed or the user answers Y.
   SETTINGS_JUST_CREATED=0
   if [ ! -f "$TARGET_DIR/settings.json" ] && [ -f "$SOURCE_ROOT/settings.json" ]; then
     if cp "$SOURCE_ROOT/settings.json" "$TARGET_DIR/settings.json" 2>/dev/null; then
@@ -372,7 +466,15 @@ else
       SETTINGS_JUST_CREATED=1
     fi
   elif [ -f "$TARGET_DIR/settings.json" ]; then
-    printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
+    if want_overwrite_settings && [ -f "$SOURCE_ROOT/settings.json" ]; then
+      if [ -n "$BAK" ]; then cp -f "$TARGET_DIR/settings.json" "$BAK/settings.json" 2>/dev/null || true; fi
+      if cp -f "$SOURCE_ROOT/settings.json" "$TARGET_DIR/settings.json" 2>/dev/null; then
+        printf "${C_DIM}  overwrote settings.json from repo defaults${C_RESET}\n"
+        SETTINGS_JUST_CREATED=1
+      fi
+    else
+      printf "${C_DIM}  kept existing settings.json${C_RESET}\n"
+    fi
   fi
   # ensure Pi extensions (forge + context) are registered — only on a freshly
   # seeded settings.json; an existing file is left completely untouched.
@@ -429,6 +531,7 @@ else
   case "$CLONED_TMP" in
     "$TMP_BASE"/kiln-*) rm -rf "$CLONED_TMP" 2>/dev/null || true; CLONED_TMP="";;
   esac
+  sweep_stale_tmp # delete any leftover kiln-* temp dirs
   # repo README → alongside the agent dir (e.g. ~/.pi/README.md)
   REPO_ROOT="$(cd "$SOURCE_ROOT/.." 2>/dev/null && pwd 2>/dev/null || echo "")"
   TARGET_PARENT="$(cd "$(dirname "$TARGET_DIR")" 2>/dev/null && pwd 2>/dev/null || echo "")"
@@ -444,6 +547,7 @@ if [ ! -d "$EXT_ROOT" ]; then
 else
   FAILED=""
   INSTALLED=0
+  SKIPPED=0
   set +e
   for ext in "$EXT_ROOT"/*; do
     [ -e "$ext" ] || continue
@@ -451,6 +555,11 @@ else
     case "$(basename "$ext")" in *.md) continue;; esac
     name="$(basename "$ext")"
     label="extensions/$name"
+    if [ -d "$ext/node_modules" ]; then
+      printf " ${C_DIM}  · %s — already installed, skipping${C_RESET}\n" "$label"
+      SKIPPED=$((SKIPPED+1))
+      continue
+    fi
     has_pkg=0; [ -f "$ext/package.json" ] && has_pkg=1
     has_sh=0;  [ -f "$ext/install.sh" ] && has_sh=1
 
@@ -481,7 +590,7 @@ else
   done
   set -e
   if [ -z "$FAILED" ]; then
-    printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[4/4]${C_RESET} extension deps ${C_DIM}— %s installed${C_RESET}\n" "$INSTALLED"
+    printf " ${C_GREEN}✔${C_RESET} ${C_DIM}[4/4]${C_RESET} extension deps ${C_DIM}— %s installed, %s skipped${C_RESET}\n" "$INSTALLED" "$SKIPPED"
   else
     # count without wc -w (no fork)
     CNT=0; for _ in $FAILED; do CNT=$((CNT+1)); done
