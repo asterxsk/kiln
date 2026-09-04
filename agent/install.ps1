@@ -418,7 +418,7 @@ try {
     $bak = "$targetDir.bak.$(Get-Date -Format yyyyMMdd-HHmmss)"
     Write-Line "${cdim}  backup  $targetDir/extensions → $bak${creset}"
     New-Item -ItemType Directory -Path $bak -Force | Out-Null
-    foreach ($f in @("AGENTS.md","keybindings.json","README.md")) {
+    foreach ($f in @("AGENTS.md","keybindings.json","README.md","version.txt")) {
       $s = Join-Path $targetDir $f
       if (Test-Path $s) { Copy-Item $s (Join-Path $bak $f) -Force -ErrorAction SilentlyContinue }
     }
@@ -450,7 +450,7 @@ try {
   $copied = 0
   $isSelfInstall = ($sourceRoot -eq $targetDir)
   if ($isSelfInstall) { Write-Line "${cdim}  source == target — skipping file copy (self-install)${creset}" }
-  foreach ($f in @("AGENTS.md","keybindings.json","README.md")) {
+  foreach ($f in @("AGENTS.md","keybindings.json","README.md","version.txt")) {
     $s = Join-Path $sourceRoot $f
     if (-not (Test-Path $s)) { continue }
     $d = Join-Path $targetDir $f

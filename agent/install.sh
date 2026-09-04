@@ -435,7 +435,7 @@ else
     printf "${C_DIM}  backup  %s/extensions → %s${C_RESET}\n" "$TARGET_DIR" "$BAK"
     set +e
     mkdir -p "$BAK" 2>/dev/null || true
-    for f in AGENTS.md keybindings.json README.md; do
+    for f in AGENTS.md keybindings.json README.md version.txt; do
       [ -f "$TARGET_DIR/$f" ] && cp -f "$TARGET_DIR/$f" "$BAK/$f" 2>/dev/null || true
     done
     if [ -d "$TARGET_DIR/extensions" ]; then
@@ -447,7 +447,7 @@ else
 
   COPIED=0
   set +e
-  for f in AGENTS.md keybindings.json README.md; do
+  for f in AGENTS.md keybindings.json README.md version.txt; do
     if [ -f "$SOURCE_ROOT/$f" ]; then
       # Self-install: source == target — no copy needed, just count
       if [ "$SOURCE_ROOT/$f" = "$TARGET_DIR/$f" ] || [ "$SOURCE_ROOT" = "$TARGET_DIR" ]; then

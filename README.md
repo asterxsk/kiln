@@ -9,7 +9,7 @@
   <a href="#quick-start"><img src="https://badges.ws/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=for-the-badge&label_color=101418" alt="platform" /></a>
 </p>
 
-Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, eleven curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
+Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, twelve curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
 
 ---
 
@@ -64,7 +64,7 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 
 ## Features
 
-- **Curated extensions** — 11 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
+- **Curated extensions** — 12 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
 - **Safe installer** — public HTTPS clone, atomic overwrites, narrow backups of only the files it replaces. Your config is never collateral damage.
 - **Forge-first UX** — `theme: forge`, fullscreen TUI, high thinking by default. Built for long sessions.
 - **Secret-free by construction** — `auth.json`, `sessions/`, `trust.json`, `models-store.json`, `bin/`, and `themes/.pi` are `.gitignore`'d. The repo holds config, never credentials.
@@ -85,6 +85,7 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 | `trim-context` | Context compaction |
 | `status line` | Status line renderer |
 | `shared` | Cross-extension utilities (timeouts, sessions, context) |
+| `kiln-update` | Nudges you to run `kiln` when GitHub is ahead of your install |
 
 Each extension lives at `agent/extensions/{name}/index.ts` and installs independently.
 

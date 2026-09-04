@@ -3,7 +3,7 @@
 #   README.md, agent/AGENTS.md, agent/README.md, agent/settings.json
 #   (canonical defaults — never overwritten on install),
 #   agent/keybindings.json, agent/install.sh, agent/install.ps1,
-#   agent/extensions
+#   agent/extensions, agent/version.txt
 # Everything below is local/secret/build and MUST NOT be committed.
 
 # Installer scratch: clone dirs, setup logs, local test targets (all under ~/.pi/tmp)
