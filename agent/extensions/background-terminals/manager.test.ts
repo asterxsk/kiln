@@ -12,14 +12,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import { Effect } from "effect";
-import type { TerminalSnapshot } from "../src/domain.ts";
+import type { TerminalSnapshot } from "./src/domain.ts";
 import {
   MAX_RUNNING,
   MAX_TRACKED,
   TerminalManager,
   type TerminalManagerShape,
-} from "../src/manager.ts";
-import { createTerminalRuntime, runTool } from "../src/runtime.ts";
+} from "./src/manager.ts";
+import { createTerminalRuntime, runTool } from "./src/runtime.ts";
 
 const cwd = process.cwd();
 

@@ -9,7 +9,7 @@ import {
   buildRgArgs,
   FD_DEFAULT_LIMIT,
   normalizeSearchPath,
-} from "../src/args.ts";
+} from "./src/args.ts";
 import {
   FD_INTEL_DARWIN_VERSION,
   InstallError,
@@ -21,10 +21,10 @@ import {
   type BinaryEnv,
   type ReleaseAsset,
   type ResolvedBinary,
-} from "../src/binaries.ts";
-import { formatCapturedOutput, formatOutput } from "../src/output.ts";
-import { executeSearchProcess } from "../src/process.ts";
-import { installNotifications, makeBinaryInitializers } from "../index.ts";
+} from "./src/binaries.ts";
+import { formatCapturedOutput, formatOutput } from "./src/output.ts";
+import { executeSearchProcess } from "./src/process.ts";
+import { installNotifications, makeBinaryInitializers } from "./index.ts";
 
 // --- argument construction -------------------------------------------------
 

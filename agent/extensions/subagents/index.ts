@@ -69,7 +69,6 @@ import {
   SUBAGENT_WAIT_TOOL_DESCRIPTION,
 } from "./src/prompt.ts";
 import { createDeferredResultDelivery } from "./src/result-delivery.ts";
-import { hideOrderedWidget, setOrderedWidget } from "./src/widget-order.ts";
 import {
   createSubagentRuntime,
   runTool,
@@ -80,8 +79,6 @@ import { openSubagentPicker, openSubagentTakeover } from "./src/ui/takeover.ts";
 const SUBAGENT_OUTPUT_MAX_BYTES = 24 * 1024;
 const WAIT_OUTPUT_MAX_BYTES = 48 * 1024;
 const WAIT_PER_AGENT_MAX_BYTES = 16 * 1024;
-
-const WIDGET_KEY = "subagents";
 
 interface BtwResultData {
   readonly id: string;
@@ -180,12 +177,8 @@ export default function (pi: ExtensionAPI) {
       .then((manager) => {
         manager.view.setOnSettled(onSettled);
         unsubStatus?.();
-        unsubStatus = manager.view.subscribe(() => {
-          updateStatus(manager);
-          updateWidget(manager);
-        });
+        unsubStatus = manager.view.subscribe(() => updateStatus(manager));
         updateStatus(manager);
-        updateWidget(manager);
         return manager;
       });
     return managerPromise;
@@ -205,40 +198,6 @@ export default function (pi: ExtensionAPI) {
       "subagents",
       formatActivityStatus(ui.theme, { running, done, failed }),
     );
-  };
-
-  /** One-line widget directly above the editor, only while ≥1 is running.
-   * Called on every manager notification, so it only touches setWidget
-   * when the running count actually changes — mirroring background-terminals. */
-  let widgetRunning = 0;
-  const updateWidget = (manager: SubagentManagerShape) => {
-    if (!ui) return;
-    try {
-      const running = manager.view
-        .list()
-        .filter((snap) => snap.status === "running").length;
-      if (running === widgetRunning) return;
-      widgetRunning = running;
-      if (running === 0) {
-        // Ordered helper keeps todos and background-terminals above us.
-        hideOrderedWidget(ui, WIDGET_KEY);
-        return;
-      }
-      setOrderedWidget(ui, WIDGET_KEY, (_tui, theme) => {
-        const line =
-          theme.fg("warning", "■ ") +
-          theme.fg(
-            "text",
-            `${running} subagent${running === 1 ? "" : "s"} running`,
-          ) +
-          theme.fg("dim", " • ") +
-          theme.fg("accent", "/subagents") +
-          theme.fg("dim", " to view");
-        return { render: () => [line], invalidate: () => {} };
-      });
-    } catch {
-      // UI may be unavailable (print/RPC modes or teardown).
-    }
   };
 
   const deliverResult = (snap: SubagentSnapshot) => {
@@ -317,12 +276,6 @@ export default function (pi: ExtensionAPI) {
     unsubStatus?.();
     unsubStatus = undefined;
     ui?.setStatus("subagents", undefined);
-    try {
-      hideOrderedWidget(ui, WIDGET_KEY);
-    } catch {
-      // UI may already be gone.
-    }
-    widgetRunning = 0;
     ui = undefined;
     const closing = runtime;
     runtime = undefined;

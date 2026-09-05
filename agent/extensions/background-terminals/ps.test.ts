@@ -3,12 +3,12 @@ import test from "node:test";
 import {
   reconcileDashboardSelection,
   type DashboardSelection,
-} from "../src/ui/ps.ts";
+} from "./src/ui/ps.ts";
 import {
   buildOutputLines,
   createOutputLineCache,
   sanitizeText,
-} from "../src/ui/output-view.ts";
+} from "./src/ui/output-view.ts";
 
 test("dashboard selection follows its terminal id and falls back by row", () => {
   const selection: DashboardSelection = { id: "bt-7", index: 6 };
