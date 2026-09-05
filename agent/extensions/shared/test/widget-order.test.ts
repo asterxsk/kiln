@@ -21,15 +21,15 @@ import {
 	hideOrderedWidget as hideTodos,
 	setOrderedWidget as setTodos,
 	WIDGET_ORDER,
-} from "../todo/widget-order.ts";
+} from "../../todo/widget-order.ts";
 import {
 	hideOrderedWidget as hideTerms,
 	setOrderedWidget as setTerms,
-} from "../background-terminals/src/widget-order.ts";
+} from "../../background-terminals/src/widget-order.ts";
 import {
 	hideOrderedWidget as hideSubs,
 	setOrderedWidget as setSubs,
-} from "../subagents/src/widget-order.ts";
+} from "../../subagents/src/widget-order.ts";
 
 const TODOS = "rpiv-todos";
 const TERMS = "background-terminals";
