@@ -4,7 +4,7 @@
  * Intercepts `bash` / `powershell` tool calls and prompts:
  *
  *   Do you want to allow pi to run:
- *   {destructive-segment(s) only}
+ *   {full-command}
  *
  *   1. Allow
  *   2. Deny
@@ -54,69 +54,33 @@ function isDestructiveSegment(segment: string): boolean {
   return false;
 }
 
-export function getDestructiveSegments(command: string): string[] {
-  return command
-    .split(/&&|\|\||;|\||\n/)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment && isDestructiveSegment(segment));
-}
-
 export function isDestructiveCommand(command: string): boolean {
-  return getDestructiveSegments(command).length > 0;
+  return command.split(/&&|\|\||;|\||\n/).some(isDestructiveSegment);
 }
 
 export default function (pi: ExtensionAPI) {
-  let destructiveEnabled = true;
-
-  pi.registerCommand("destructive", {
-    description: "Toggle destructive-command guard — /destructive, /destructive on, /destructive off",
-    handler: async (args, ctx) => {
-      const arg = (args || "").trim().toLowerCase();
-      if (arg === "on" || arg === "enable" || arg === "enabled") {
-        destructiveEnabled = true;
-        ctx.ui.notify("destructive guard: ON — deletion commands need confirmation", "info");
-        return;
-      }
-      if (arg === "off" || arg === "disable" || arg === "disabled") {
-        destructiveEnabled = false;
-        ctx.ui.notify("destructive guard: OFF — deletion commands run without confirmation", "warning");
-        return;
-      }
-      // toggle
-      destructiveEnabled = !destructiveEnabled;
-      ctx.ui.notify(
-        `destructive guard: ${destructiveEnabled ? "ON" : "OFF"}`,
-        destructiveEnabled ? "info" : "warning",
-      );
-    },
-  });
-
   pi.on("tool_call", async (event, ctx) => {
-    if (!destructiveEnabled) return undefined;
     if (event.toolName !== "bash" && event.toolName !== "powershell") {
       return undefined;
     }
 
     const command = event.input.command as string | undefined;
-    const destructiveParts = command ? getDestructiveSegments(command) : [];
-    if (!command || destructiveParts.length === 0) return undefined;
-
-    const display = destructiveParts.join("\n");
+    if (!command || !isDestructiveCommand(command)) return undefined;
 
     if (!ctx.hasUI) {
       return {
         block: true,
-        reason: `Blocked deletion command (no UI to confirm): ${display}`,
+        reason: `Blocked deletion command (no UI to confirm): ${command}`,
       };
     }
 
     const choice = await ctx.ui.select(
-      `Do you want to allow pi to run:\n${display}`,
+      `Do you want to allow pi to run:\n${command}`,
       ["1. Allow", "2. Deny"],
     );
 
     if (choice !== "1. Allow") {
-      return { block: true, reason: `User denied deletion command: ${display}` };
+      return { block: true, reason: `User denied deletion command: ${command}` };
     }
 
     return undefined;
