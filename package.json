@@ -1,6 +1,6 @@
 {
   "name": "@asterxsk/kiln",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Kiln — versioned pi agent configuration (extensions, defaults, keybindings) with an idempotent cross-platform installer.",
   "license": "MIT",
   "repository": {

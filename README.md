@@ -28,7 +28,7 @@ What the installer does:
 3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten, your `settings.json`, `taste/`, sessions, and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
-**Safe to re-run.** It back ups the extensions and config files it replaces, never touches per-user state, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The `npx` installer ships the config inside the tarball, so it needs no `git`; `--repo`/`--branch` fall back to a plain-HTTPS clone when you point at a fork.
+**Safe to re-run.** It back ups the extensions and config files it replaces, never touches per-user state, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
 
 ### Publishing the npm package
 
@@ -142,7 +142,7 @@ The house rules, merged into every session: *think before coding*, *simplicity f
 ```bash
 git clone https://github.com/asterxsk/kiln.git
 cd kiln
-node bin/kiln.js --target /tmp/pi-test --skip-pi --skip-packages --yes
+node bin/kiln.js --local --target /tmp/pi-test --skip-pi --skip-packages --yes
 ls /tmp/pi-test/extensions
 ```
 

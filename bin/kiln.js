@@ -266,14 +266,18 @@ function resolveTarget(opt) {
   return path.join(os.homedir(), ".pi", "agent");
 }
 
-// Source root: bundled payload (npm tarball or dev checkout) → else git clone.
+// Source root: always a fresh GitHub clone (never the bundled tarball — it goes
+// stale). --local builds from a local checkout instead (dev only).
 function resolveSourceRoot(args) {
   const pkgRoot = path.resolve(__dirname, ".."); // bin/ → package root
-  const cands = [path.join(pkgRoot, "agent"), pkgRoot, process.cwd(), path.join(process.cwd(), "agent")];
-  for (const r of cands) {
+  if (args.local) {
+    const cands = [path.join(pkgRoot, "agent"), pkgRoot, process.cwd(), path.join(process.cwd(), "agent")];
+    for (const r of cands) {
       if (fs.existsSync(path.join(r, "extensions")) && fs.existsSync(path.join(r, "AGENTS.md"))) return r;
     }
-    if (args.local) throw new Error(`local checkout not found (tried: ${cands.join(", ")})`);
+    throw new Error(`local checkout not found (tried: ${cands.join(", ")})`);
+  }
+  if (!have("git")) throw new Error("git not found — kiln installs from GitHub (use --local for a local checkout)");
   const base = path.join(os.homedir(), ".pi", "tmp");
   fs.mkdirSync(base, { recursive: true });
   const tmp = path.join(base, "kiln-" + crypto.randomBytes(4).toString("hex"));
@@ -322,10 +326,8 @@ async function main() {
   if (!have("npm")) { line(`${C.red}  ✖ npm not found (Node installed but npm missing)${C.reset}`); process.exit(1); }
   line(`${C.dim}  node ${nodeVer}  ·  npm ${npmVer}  ·  ${cmdOut("git", ["--version"]) || "git n/a"}${C.reset}\n`);
 
-  // git is only needed when we must clone (no bundled payload and not --local)
-  const pkgAgent = path.join(path.resolve(__dirname, ".."), "agent");
-  const haveSource = fs.existsSync(path.join(pkgAgent, "extensions")) && fs.existsSync(path.join(pkgAgent, "AGENTS.md"));
-  if (!have("git") && !haveSource && !args.local) { line(`${C.red}  ✖ git not found — required to fetch config${C.reset}`); process.exit(1); }
+  // git is required unless --local (every install clones GitHub latest)
+  if (!have("git") && !args.local) { line(`${C.red}  ✖ git not found — kiln installs from GitHub (or re-run with --local)${C.reset}`); process.exit(1); }
   liveStart();
 
   // ── [1/4] pi ──
