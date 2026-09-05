@@ -14,6 +14,7 @@ import { type TUI, truncateToWidth } from "@earendil-works/pi-tui";
 import { selectOverlayLayout, selectShowTaskIds, selectTodoCounts } from "./state/selectors.js";
 import { getState } from "./state/store.js";
 import { formatOverlayTaskLine } from "./view/format.js";
+import { hideOrderedWidget, setOrderedWidget } from "./widget-order.js";
 
 const WIDGET_KEY = "rpiv-todos";
 // Budget for content rows (heading + tasks/overflow).
@@ -80,7 +81,10 @@ export class TodoOverlay {
 		}
 
 		if (!this.widgetRegistered) {
-			this.uiCtx.setWidget(
+			// Ordered helper re-applies todos → background-terminals →
+			// subagents top-to-bottom, so todos stay furthest from the input
+			// no matter which widget updated last.
+			setOrderedWidget(
 				WIDGET_KEY,
 				(tui, theme) => {
 					this.tui = tui;
@@ -103,7 +107,7 @@ export class TodoOverlay {
 	/** Hide the widget if currently registered. */
 	private hideWidget(): void {
 		if (this.widgetRegistered && this.uiCtx) {
-			this.uiCtx.setWidget(WIDGET_KEY, undefined);
+			hideOrderedWidget(this.uiCtx, WIDGET_KEY);
 			this.widgetRegistered = false;
 			this.tui = undefined;
 		}
@@ -190,7 +194,7 @@ export class TodoOverlay {
 
 
 	dispose(): void {
-		if (this.uiCtx) this.uiCtx.setWidget(WIDGET_KEY, undefined);
+		if (this.uiCtx) hideOrderedWidget(this.uiCtx, WIDGET_KEY);
 		this.widgetRegistered = false;
 		this.tui = undefined;
 		this.uiCtx = undefined;

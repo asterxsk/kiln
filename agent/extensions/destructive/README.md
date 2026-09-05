@@ -8,11 +8,14 @@ Intercepts `bash` / `powershell` tool calls and prompts:
 
 ```text
 Do you want to allow pi to run:
-{full-command}
+{destructive-part(s) only}
 
 1. Allow
 2. Deny
 ```
+
+Only the destructive segment(s) are shown — e.g. `echo hi && rm -rf /tmp/foo`
+prompts with just `rm -rf /tmp/foo`.
 
 Anything other than **Allow** — including Deny or dismissing with Esc —
 blocks the command. In non-interactive mode (no UI) deletion commands are
@@ -27,5 +30,5 @@ blocked by default.
 
 ## Files
 
-- `index.ts` — `tool_call` hook, command matching (`isDestructiveCommand`), confirm prompt
+- `index.ts` — `tool_call` hook, command matching (`isDestructiveCommand` / `getDestructiveSegments`), confirm prompt, `/destructive` toggle command
 - `README.md` — this file

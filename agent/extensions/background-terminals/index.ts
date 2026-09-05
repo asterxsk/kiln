@@ -47,6 +47,7 @@ import {
   describeTerminal,
 } from "./src/prompt.ts";
 import { createDeferredResultDelivery } from "./src/result-delivery.ts";
+import { hideOrderedWidget, setOrderedWidget } from "./src/widget-order.ts";
 import {
   createTerminalRuntime,
   runTool,
@@ -123,10 +124,11 @@ export default function (pi: ExtensionAPI) {
       if (running === widgetRunning) return;
       widgetRunning = running;
       if (running === 0) {
-        ui.setWidget(WIDGET_KEY, undefined);
+        // Ordered helper keeps todos above us and subagents below us.
+        hideOrderedWidget(ui, WIDGET_KEY);
         return;
       }
-      ui.setWidget(WIDGET_KEY, (_tui, theme) => {
+      setOrderedWidget(ui, WIDGET_KEY, (_tui, theme) => {
         const line =
           theme.fg("warning", "■ ") +
           theme.fg(
@@ -216,7 +218,7 @@ export default function (pi: ExtensionAPI) {
     unsubStatus?.();
     unsubStatus = undefined;
     try {
-      ui?.setWidget(WIDGET_KEY, undefined);
+      hideOrderedWidget(ui, WIDGET_KEY);
     } catch {
       // UI may already be gone.
     }
