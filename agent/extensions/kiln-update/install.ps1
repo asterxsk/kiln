@@ -2,6 +2,10 @@
 # Per-extension installer — Windows / PowerShell
 # Installs npm dependencies for this extension. No-op if no package.json.
 $ErrorActionPreference = "Stop"
+# Drop npm_config_allow_scripts inherited from a parent npm/npx process:
+# npm >=11 rejects it for project installs (EALLOWSCRIPTS). File config still applies.
+Remove-Item Env:\npm_config_allow_scripts -ErrorAction SilentlyContinue
+Remove-Item Env:\NPM_CONFIG_ALLOW_SCRIPTS -ErrorAction SilentlyContinue
 $extDir = $PSScriptRoot
 if (-not $extDir) { $extDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not (Test-Path "$extDir/package.json")) {

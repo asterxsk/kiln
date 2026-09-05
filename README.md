@@ -9,7 +9,7 @@
   <a href="#quick-start"><img src="https://badges.ws/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=for-the-badge&label_color=101418" alt="platform" /></a>
 </p>
 
-Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, twelve curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
+Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, eleven curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
 
 ---
 
@@ -18,20 +18,7 @@ Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon o
 One line, then you're done:
 
 ```bash
-# npm / bun (recommended — no Defender flag, no git needed)
 npx @asterxsk/kiln --yes
-# or: npm i -g @asterxsk/kiln && kiln --yes
-# or: bunx @asterxsk/kiln --yes
-```
-
-```bash
-# macOS / Linux / Git Bash (classic)
-curl -fsSL https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.sh | sh
-```
-
-```powershell
-# Windows PowerShell (5.1 or 7+)
-powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/asterxsk/kiln/main/agent/install.ps1 -UseBasicParsing | iex"
 ```
 
 What the installer does:
@@ -64,11 +51,11 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 
 ## Features
 
-- **Curated extensions** — 12 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
+- **Curated extensions** — 11 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
 - **Safe installer** — public HTTPS clone, atomic overwrites, narrow backups of only the files it replaces. Your config is never collateral damage.
 - **Forge-first UX** — `theme: forge`, fullscreen TUI, high thinking by default. Built for long sessions.
 - **Secret-free by construction** — `auth.json`, `sessions/`, `trust.json`, `models-store.json`, `bin/`, and `themes/.pi` are `.gitignore`'d. The repo holds config, never credentials.
-- **Cross-platform** — `install.sh` for macOS/Linux/Git Bash, `install.ps1` for PowerShell.
+- **Cross-platform** — one Node installer for macOS, Linux, and Windows.
 
 ### Extensions
 
@@ -85,7 +72,6 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 | `trim-context` | Context compaction |
 | `status line` | Status line renderer |
 | `shared` | Cross-extension utilities (timeouts, sessions, context) |
-| `kiln-update` | Nudges you to run `kiln` when GitHub is ahead of your install |
 
 Each extension lives at `agent/extensions/{name}/index.ts` and installs independently.
 
@@ -102,12 +88,10 @@ Each extension lives at `agent/extensions/{name}/index.ts` and installs independ
     ├── README.md                # pointer → ../README.md
     ├── settings.json            # canonical settings (the installer never overwrites yours)
     ├── keybindings.json         # TUI keybindings
-    ├── install.sh               # macOS/Linux installer
-    ├── install.ps1              # Windows installer
     └── extensions/              # self-contained pi extensions
 ```
 
-Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybindings.json`, `agent/AGENTS.md`, `agent/install.*`, `README.md`. Everything else is local-only.
+Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybindings.json`, `agent/AGENTS.md`, `README.md`. Everything else is local-only.
 
 ---
 
@@ -158,7 +142,7 @@ The house rules, merged into every session: *think before coding*, *simplicity f
 ```bash
 git clone https://github.com/asterxsk/kiln.git
 cd kiln
-./agent/install.sh --target /tmp/pi-test --skip-pi --skip-packages --yes
+node bin/kiln.js --target /tmp/pi-test --skip-pi --skip-packages --yes
 ls /tmp/pi-test/extensions
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// kiln installer — cross-platform Node port of agent/install.sh + agent/install.ps1.
+// kiln installer (npm) — installs pi, the forge + context packages, and the curated agent config.
 //  1) Install/update pi (@earendil-works/pi-coding-agent)
 //  2) Install pi packages (pi-context-usage, @baretread/pi-forge)
 //  3) Install custom config (AGENTS.md, keybindings, extensions …)
@@ -38,6 +38,21 @@ let clonedTmp = "";
 let tmpLog = "";
 let ok = true; // hard failures flip this; warnings don't
 
+// npm >=11 rejects `npm_config_allow_scripts` inherited from a parent npm/npx
+// process ("--allow-scripts is not allowed in project-scoped installs"). This
+// happens when kiln itself runs under npx/npm exec and the user has
+// `allow-scripts` in ~/.npmrc: npm forwards it as env to every child, so each
+// per-extension `npm ci` fails with EALLOWSCRIPTS. Drop it; file-based config
+// (~/.npmrc, per-package `allowScripts`) still applies to child npm processes.
+for (const k of ["npm_config_allow_scripts", "NPM_CONFIG_ALLOW_SCRIPTS"]) delete process.env[k];
+
+// ── summary buckets ─────────────────────────────────────────────────────
+// Every completed item is recorded here; the final Summary prints them all.
+const buckets = { skipped: [], updated: [], installed: [], "npm modules": [] };
+const FRIENDLY = { "pi-context-usage": "context extension", "@baretread/pi-forge": "forge extension" };
+function note(bucket, name) { buckets[bucket].push(name); }
+function prettyPkg(spec) { return FRIENDLY[spec.replace(/^npm:/, "")] || spec; }
+
 // ── args ────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const o = {
@@ -75,29 +90,73 @@ const C = isTTY
   : { reset: "", bold: "", dim: "", green: "", yellow: "", red: "", cyan: "", gray: "" };
 const line = (s) => process.stdout.write(s + "\n");
 const log = (s) => { try { fs.appendFileSync(tmpLog, s + "\n"); } catch {} };
+// Mid-run output: plain lines when piped, swallowed (→ log + summary) when live.
+function detail(s) { try { log(String(s).replace(/\x1b\[[0-9;]*m/g, "")); } catch {} if (!isTTY) line(s); }
+
+// ── forge art + live status ─────────────────────────────────────────────
+const ART = [
+  "     █▌  █▌",
+  "  ██████████████",
+  "     ██    ██",
+  "     ██    ██",
+  "     ██    ██",
+  "     ██    ██ ",
+];
+// Phase 0 = ember (dim), phase 1 = stoked (bright). Non-TTY → plain art.
+function artLines(phase) {
+  if (!isTTY) return ART.slice();
+  const m = phase ? 1 : 2; // bold vs dim
+  const cream = `\x1b[${m};38;5;230m`, orange = `\x1b[${m};38;5;208m`, brown = `\x1b[${m};38;5;94m`, R = "\x1b[0m";
+  return [
+    `     ${cream}█▌${R}  ${cream}█▌${R}`,
+    `  ${orange}██████████████${R}`,
+    `     ${orange}██${R}    ${orange}██${R}`,
+    `     ${orange}██${R}    ${orange}██${R}`,
+    `     ${orange}██${R}    ${orange}██${R}`,
+    `     ${brown}██    ██${R} `,
+  ];
+}
+const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠰", "⠠", "⠦", "⠧", "⠇", "⠏"];
+let liveLabel = "", liveTimer = null, liveTickN = 0;
+function liveDraw() {
+  if (!isTTY) return;
+  const rows = [...artLines(liveTickN % 10 < 5 ? 0 : 1), ` ${C.yellow}${SPIN[liveTickN % SPIN.length]}${C.reset} ${C.dim}${liveLabel}${C.reset}`];
+  process.stdout.write("\x1b[7A");
+  for (const r of rows) process.stdout.write(`\r\x1b[K${r}\n`);
+}
+function liveStart() {
+  if (!isTTY) return;
+  process.stdout.write("\n".repeat(7));
+  liveTickN = 0;
+  liveDraw();
+  liveTimer = setInterval(() => { liveTickN++; liveDraw(); }, 100);
+}
+function liveSet(label) { liveLabel = label; }
+function liveStop() {
+  if (!isTTY) return;
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  liveTickN = 5; // stoked final frame
+  liveDraw();
+}
 
 function title() {
   line("");
   line(`  ${C.bold}◆ Pi Setup${C.reset}`);
   line(`  ${C.dim}custom agent config  ·  pi + forge + extensions${C.reset}`);
+  if (!isTTY) for (const r of artLines(0)) line(`  ${r}`);
   line("");
 }
 
-// Run a command: spinner on TTY, quiet otherwise. Output always → log.
+// Run a command: the live status line shows it on TTY, plain lines when piped. Output always → log.
 function runStep(step, label, cmd, args, opts = {}) {
   return new Promise((resolve) => {
+    liveSet(`[${step}] ${label}`);
+    if (!isTTY) line(`  · ${label}`);
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], shell: false, ...opts });
-    let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠰", "⠠", "⠦", "⠧", "⠇", "⠏"];
-    let i = 0, timer = null;
-    if (isTTY) {
-      timer = setInterval(() => {
-        process.stdout.write(`\r\x1b[K ${C.yellow}${frames[i++ % frames.length]}${C.reset} ${C.dim}[${step}/4]${C.reset} ${label}`);
-      }, 80);
-    }
     child.stdout.on("data", (d) => log(d.toString().trimEnd()));
     child.stderr.on("data", (d) => log(d.toString().trimEnd()));
-    child.on("error", (e) => { log(`spawn failed: ${e.message}`); if (timer) clearInterval(timer); if (isTTY) process.stdout.write("\r\x1b[K"); resolve(1); });
-    child.on("close", (code) => { if (timer) clearInterval(timer); if (isTTY) process.stdout.write("\r\x1b[K"); resolve(code ?? 1); });
+    child.on("error", (e) => { log(`spawn failed: ${e.message}`); resolve(1); });
+    child.on("close", (code) => { resolve(code ?? 1); });
   });
 }
 
@@ -123,6 +182,15 @@ function cmdOutShell(command) {
 function npmStep(step, label, args) {
   if (process.platform === "win32") return runStep(step, label, "npm.cmd " + args.map(q).join(" "), [], { shell: true });
   return runStep(step, label, "npm", args);
+}
+// pi is also a cmd shim on Windows — same shell treatment.
+function piOut(args) {
+  if (process.platform === "win32") return cmdOutShell("pi " + args.map(q).join(" "));
+  return cmdOut("pi", args);
+}
+function piStep(label, args) {
+  if (process.platform === "win32") return runStep("pkg", label, "pi " + args.map(q).join(" "), [], { shell: true });
+  return runStep("pkg", label, "pi", args);
 }
 const npmVer = process.platform === "win32" ? cmdOutShell("npm.cmd --version") : cmdOut("npm", ["--version"]);
 
@@ -210,7 +278,8 @@ function resolveSourceRoot(args) {
   fs.mkdirSync(base, { recursive: true });
   const tmp = path.join(base, "kiln-" + crypto.randomBytes(4).toString("hex"));
   fs.mkdirSync(tmp, { recursive: true });
-  line(`${C.dim}  → cloning ${args.repo} (branch ${args.branch}) → ${tmp}${C.reset}`);
+  liveSet(`cloning repo…`);
+  detail(`  · cloning ${args.repo} (branch ${args.branch})`);
   const r = spawnSync("git", ["clone", "--depth", "1", "--branch", args.branch, args.repo, tmp],
     { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", GIT_ASKPASS: "echo" } });
   if (r.stdout) log(r.stdout.trimEnd());
@@ -231,6 +300,13 @@ async function main() {
 
   title();
   const targetDir = resolveTarget(args.target);
+  // Settings decision up front (only when interactive with no explicit flag).
+  if (args.settingsMode === "ask" && !args.yes && process.stdin.isTTY && process.stdout.isTTY
+      && fs.existsSync(path.join(targetDir, "settings.json"))) {
+    args.settingsMode = askYN("  Overwrite settings (y/n): ") ? "overwrite" : "keep";
+  } else if (args.settingsMode === "ask" && (args.yes || !process.stdin.isTTY)) {
+    args.settingsMode = "keep";
+  }
   line(`${C.dim}  target  ${C.reset}${targetDir}`);
   line(`${C.dim}  repo    ${C.reset}${args.repo}  ${C.dim}(${args.branch})${C.reset}`);
   line(`${C.dim}  log     ${C.reset}${tmpLog}\n`);
@@ -250,40 +326,48 @@ async function main() {
   const pkgAgent = path.join(path.resolve(__dirname, ".."), "agent");
   const haveSource = fs.existsSync(path.join(pkgAgent, "extensions")) && fs.existsSync(path.join(pkgAgent, "AGENTS.md"));
   if (!have("git") && !haveSource && !args.local) { line(`${C.red}  ✖ git not found — required to fetch config${C.reset}`); process.exit(1); }
+  liveStart();
 
   // ── [1/4] pi ──
   if (args.skipPi) {
-    line(` ${C.green}✔${C.reset} ${C.dim}[1/4]${C.reset} Install pi ${C.dim}— skipped${C.reset}`);
+    detail(`  · Install pi — skipped`);
+    note("skipped", "pi");
   } else if (have("pi")) {
     const installed = globalPkgVersion(PI_PACKAGE) || cmdOut("pi", ["--version"]).replace(/^[vV]/, "").trim();
     const latest = latestPkgVersion(PI_PACKAGE);
     if (installed && latest && installed === latest) {
-      line(` ${C.green}✔${C.reset} ${C.dim}[1/4]${C.reset} pi ${C.dim}— already installed (${installed}), skipping${C.reset}`);
+      detail(`  · pi ${installed} — already installed, skipping`);
+      note("skipped", "pi");
     } else if (installed && !latest) {
-      line(` ${C.green}✔${C.reset} ${C.dim}[1/4]${C.reset} pi ${C.dim}— already installed (${installed}), skipping version check (offline)${C.reset}`);
+      detail(`  · pi ${installed} — already installed, skipping version check (offline)`);
+      note("skipped", "pi");
     } else {
-      const label = installed ? `updating pi ${installed} → ${latest || "latest"} (${PI_PACKAGE})` : `installing pi (${PI_PACKAGE})`;
-      const code = await npmStep("1", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
+      const label = installed ? `updating pi ${installed} → ${latest || "latest"}` : `installing pi`;
+      const code = await npmStep("1/4", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
       if (code === 0) {
-        line(` ${C.green}✔${C.reset} ${C.dim}[1/4]${C.reset} ${label} ${C.dim}— ${cmdOut("pi", ["--version"]) || "?"}${C.reset}`);
+        detail(`  · ${label} — ${cmdOut("pi", ["--version"]) || "?"}`);
+        note(installed ? "updated" : "installed", "pi");
       } else {
-        line(` ${C.red}✖${C.reset} ${C.dim}[1/4]${C.reset} ${label} ${C.red}failed (exit ${code})${C.reset}  ${C.dim}see ${tmpLog}${C.reset}`);
+        detail(`  ✖ ${label} failed (exit ${code}) — see log`);
+        note("updated", "pi (failed — see log)");
         ok = false;
       }
     }
   } else {
-    const label = have("pi") ? `updating pi (${PI_PACKAGE})` : `installing pi (${PI_PACKAGE})`;
-    const code = await npmStep("1", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
+    const label = `installing pi`;
+    const code = await npmStep("1/4", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
     if (code === 0) {
-      line(` ${C.green}✔${C.reset} ${C.dim}[1/4]${C.reset} ${label} ${C.dim}— ${cmdOut("pi", ["--version"]) || "?"}${C.reset}`);
+      detail(`  · ${label} — ${cmdOut("pi", ["--version"]) || "?"}`);
+      note("installed", "pi");
     } else {
-      line(` ${C.red}✖${C.reset} ${C.dim}[1/4]${C.reset} ${label} ${C.red}failed (exit ${code})${C.reset}  ${C.dim}see ${tmpLog}${C.reset}`);
+      detail(`  ✖ ${label} failed (exit ${code}) — see log`);
+      note("installed", "pi (failed — see log)");
       ok = false;
     }
   }
-  // ── [2/4] pi packages ──
+  // ── [2/4] pi packages (global best-effort; pi-side ensure runs after step 3) ──
   if (args.skipPackages) {
-    line(` ${C.green}✔${C.reset} ${C.dim}[2/4]${C.reset} pi packages ${C.dim}— skipped${C.reset}`);
+    detail(`  · pi packages — skipped`);
   } else {
     const bare = PACKAGES.map((p) => p.replace(/@latest$/, ""));
     const need = [];
@@ -291,36 +375,33 @@ async function main() {
       const inst = globalPkgVersion(name);
       const latest = latestPkgVersion(name);
       if (inst && latest && inst === latest) {
-        line(`${C.dim}  · ${name}@${inst} already installed, skipping${C.reset}`);
+        detail(`  · ${name}@${inst} already installed globally, skipping`);
       } else if (inst && !latest) {
-        line(`${C.dim}  · ${name}@${inst} already installed, skipping version check (offline)${C.reset}`);
+        detail(`  · ${name}@${inst} already installed globally, skipping version check (offline)`);
       } else {
-        if (inst) line(`${C.dim}  · ${name} ${inst} → ${latest || "latest"} — will update${C.reset}`);
+        if (inst) detail(`  · ${name} ${inst} → ${latest || "latest"} — will update globally`);
         need.push(`${name}@latest`);
       }
     }
     if (!need.length) {
-      line(` ${C.green}✔${C.reset} ${C.dim}[2/4]${C.reset} pi packages ${C.dim}— already installed, skipping${C.reset}`);
+      detail(`  · pi packages — already installed globally, skipping`);
     } else {
-    const label = `installing ${need.join(" ")}`;
-    const code = await npmStep("2", label, ["install", "-g", ...need, "--no-audit", "--no-fund"]);
-    if (code === 0) line(` ${C.green}✔${C.reset} ${C.dim}[2/4]${C.reset} pi packages ${C.dim}— done${C.reset}`);
-    else {
-      line(` ${C.yellow}⚠${C.reset} ${C.dim}[2/4]${C.reset} ${label} ${C.yellow}exit ${code} — continuing (pi will auto-install)${C.reset}`);
-      line(`    ${C.dim}see ${tmpLog}${C.reset}`);
-    }
+    const label = `installing ${need.join(" ")} (-g)`;
+    const code = await npmStep("2/4", label, ["install", "-g", ...need, "--no-audit", "--no-fund"]);
+    if (code === 0) detail(`  · pi packages — global install done`);
+    else detail(`  ⚠ ${label} exit ${code} — continuing (pi-side ensure runs later)`);
     }
   }
   // ── [3/4] custom config ──
   try {
     const sourceRoot = resolveSourceRoot(args);
-    line(`${C.dim}  source  ${sourceRoot}${C.reset}`);
+    detail(`  · source ${sourceRoot}`);
     fs.mkdirSync(targetDir, { recursive: true });
     let bak = "";
     if (fs.existsSync(path.join(targetDir, "AGENTS.md")) || fs.existsSync(path.join(targetDir, "extensions"))) {
       const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
       bak = `${targetDir}.bak.${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
-      line(`${C.dim}  backup  ${targetDir}/extensions → ${bak}${C.reset}`);
+      detail(`  · backup ${targetDir}/extensions → ${bak}`);
       fs.mkdirSync(bak, { recursive: true });
       for (const f of ["AGENTS.md", "keybindings.json", "README.md"]) {
         const s = path.join(targetDir, f);
@@ -339,7 +420,7 @@ async function main() {
 
     let copied = 0;
     const selfInstall = path.resolve(sourceRoot) === path.resolve(targetDir);
-    if (selfInstall) line(`${C.dim}  source == target — skipping file copy (self-install)${C.reset}`);
+    if (selfInstall) detail(`  · source == target — skipping file copy (self-install)`);
     for (const f of ["AGENTS.md", "keybindings.json", "README.md"]) {
       if (!fs.existsSync(path.join(sourceRoot, f))) continue;
       if (!selfInstall) fs.copyFileSync(path.join(sourceRoot, f), path.join(targetDir, f));
@@ -350,19 +431,20 @@ async function main() {
     const repoSettings = path.join(sourceRoot, "settings.json");
     if (!fs.existsSync(settingsPath) && fs.existsSync(repoSettings)) {
       fs.copyFileSync(repoSettings, settingsPath);
-      line(`${C.dim}  created settings.json from repo defaults${C.reset}`);
+      detail(`  · created settings.json from repo defaults`);
+      note("installed", "settings.json");
       freshSettings = true;
     } else if (fs.existsSync(settingsPath)) {
-      let mode = args.settingsMode;
-      if (mode === "ask" && (args.yes || !process.stdin.isTTY)) mode = "keep";
-      if (mode === "ask") mode = askYN(`  settings.json exists. Overwrite with repo defaults? [y/N] (Recommended for first-time setup) `) ? "overwrite" : "keep";
+      const mode = args.settingsMode === "ask" ? "keep" : args.settingsMode; // decided up front
       if (mode === "overwrite" && fs.existsSync(repoSettings)) {
         if (bak) { try { fs.copyFileSync(settingsPath, path.join(bak, "settings.json")); } catch {} }
         fs.copyFileSync(repoSettings, settingsPath);
-        line(`${C.dim}  overwrote settings.json from repo defaults${C.reset}`);
+        detail(`  · overwrote settings.json from repo defaults`);
+        note("updated", "settings.json");
         freshSettings = true;
       } else {
-        line(`${C.dim}  kept existing settings.json${C.reset}`);
+        detail(`  · kept existing settings.json`);
+        note("skipped", "settings.json");
       }
     }
     if (freshSettings) {
@@ -372,12 +454,12 @@ async function main() {
         j.packages = j.packages || [];
         let changed = false;
         for (const pkg of SETTINGS_PACKAGES) if (!j.packages.includes(pkg)) { j.packages.push(pkg); changed = true; }
-        if (changed) { fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n"); line("  patched settings.json packages → forge + context"); }
+        if (changed) { fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n"); detail("  · patched settings.json packages → forge + context"); }
       } catch {}
     }
     for (const t of ["taste.md", "taste", "taste.json"]) {
       const tp = path.join(targetDir, t);
-      if (fs.existsSync(tp)) line(`${C.dim}  kept existing ${t}${C.reset}`);
+      if (fs.existsSync(tp)) detail(`  · kept existing ${t}`);
       else if (fs.existsSync(path.join(sourceRoot, t))) {
         const s = path.join(sourceRoot, t);
         if (fs.statSync(s).isDirectory()) copyTree(s, tp, new Set());
@@ -389,8 +471,10 @@ async function main() {
       fs.mkdirSync(path.join(targetDir, "extensions"), { recursive: true });
       for (const e of fs.readdirSync(path.join(sourceRoot, "extensions"), { withFileTypes: true })) {
         if (!e.isDirectory() || e.name.endsWith(".md")) continue;
-        if (copyTree(path.join(sourceRoot, "extensions", e.name), path.join(targetDir, "extensions", e.name))) copied++;
-        else line(`${C.yellow}  ⚠ copy extensions/${e.name} failed${C.reset}`);
+        const dst = path.join(targetDir, "extensions", e.name);
+        const existed = fs.existsSync(dst);
+        if (copyTree(path.join(sourceRoot, "extensions", e.name), dst)) { copied++; note(existed ? "updated" : "installed", e.name); }
+        else detail(`  ⚠ copy extensions/${e.name} failed`);
       }
     }
 
@@ -405,7 +489,7 @@ async function main() {
       }
     }
 
-    line(` ${C.green}✔${C.reset} ${C.dim}[3/4]${C.reset} custom config ${C.dim}— ${copied} items → ${targetDir}${C.reset}`);
+    detail(`  · custom config — ${copied} items → ${targetDir}`);
     if (clonedTmp) { fs.rmSync(clonedTmp, { recursive: true, force: true }); clonedTmp = ""; }
     sweepStaleCloneTmp(tmpBase, ""); // delete any leftover kiln-* temp dirs
     const repoReadme = path.resolve(sourceRoot, "..", "README.md");
@@ -414,13 +498,13 @@ async function main() {
       try { fs.copyFileSync(repoReadme, parentReadme); } catch {}
     }
   } catch (e) {
-    line(` ${C.red}✖${C.reset} ${C.dim}[3/4]${C.reset} custom config ${C.red}failed:${C.reset} ${e.message}`);
+    detail(`  ✖ custom config failed: ${e.message}`);
     ok = false;
   }
   // ── [4/4] per-extension deps ──
   const extRoot = path.join(targetDir, "extensions");
   if (!fs.existsSync(extRoot)) {
-    line(` ${C.yellow}⚠${C.reset} ${C.dim}[4/4]${C.reset} no extensions found at ${extRoot}`);
+    detail(`  ⚠ no extensions found at ${extRoot}`);
   } else {
     const failed = [];
     let installed = 0, skipped = 0;
@@ -428,7 +512,8 @@ async function main() {
       if (!e.isDirectory() || e.name.endsWith(".md")) continue;
       const dir = path.join(extRoot, e.name), label = `extensions/${e.name}`;
       if (fs.existsSync(path.join(dir, "node_modules"))) {
-        line(` ${C.dim}  · ${label} — already installed, skipping${C.reset}`);
+        detail(`  · ${label} — already installed, skipping`);
+        note("skipped", e.name);
         skipped++;
         continue;
       }
@@ -437,34 +522,66 @@ async function main() {
       let code;
       if (process.platform === "win32" && fs.existsSync(ps1)) {
         const shell = have("pwsh") ? "pwsh" : "powershell";
-        code = await runStep("4", label, shell, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1]);
+        code = await runStep("4/4", label, shell, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1]);
       } else if (process.platform !== "win32" && fs.existsSync(sh)) {
-        code = await runStep("4", label, "sh", [sh]);
+        code = await runStep("4/4", label, "sh", [sh]);
       } else if (hasPkg) {
         const a = ["--prefix", dir, fs.existsSync(path.join(dir, "package-lock.json")) ? "ci" : "install", "--no-audit", "--no-fund"];
-        code = await npmStep("4", label, a);
+        code = await npmStep("4/4", label, a);
       } else {
-        line(` ${C.dim}  · ${label} — no package.json, skipping${C.reset}`);
+        detail(`  · ${label} — no package.json, skipping`);
         continue;
       }
-      if (code === 0) { line(` ${C.green}✔${C.reset} ${C.dim}[4/4]${C.reset} ${label}`); installed++; }
-      else { line(` ${C.red}✖${C.reset} ${C.dim}[4/4]${C.reset} ${label} ${C.red}failed (exit ${code})${C.reset}`); failed.push(e.name); }
+      if (code === 0) { detail(`  · ${label} — done`); if (hasPkg) note("npm modules", e.name); installed++; }
+      else { detail(`  ✖ ${label} failed (exit ${code}) — see log`); note("npm modules", `${e.name} (failed — see log)`); failed.push(e.name); }
     }
-    if (!failed.length) line(` ${C.green}✔${C.reset} ${C.dim}[4/4]${C.reset} extension deps ${C.dim}— ${installed} installed, ${skipped} skipped${C.reset}`);
-    else line(` ${C.yellow}⚠${C.reset} ${C.dim}[4/4]${C.reset} extension deps ${C.yellow}${failed.length} failed:${C.reset} ${failed.join(", ")}  ${C.dim}see ${tmpLog}${C.reset}`);
+    if (!failed.length) detail(`  · extension deps — ${installed} installed, ${skipped} skipped`);
+    else detail(`  ⚠ extension deps ${failed.length} failed: ${failed.join(", ")} — see log`);
+  }
+
+  // ── pi package ensure (forge + context actually registered with pi) ──
+  // `pi list` is truth: global installs mean nothing to pi (it uses its own dir).
+  const defaultDir = path.join(os.homedir(), ".pi", "agent");
+  if (args.skipPackages) {
+    for (const s of SETTINGS_PACKAGES) note("skipped", prettyPkg(s));
+  } else if (!have("pi")) {
+    detail(`  ⚠ pi binary not found — packages registered for next launch`);
+    for (const s of SETTINGS_PACKAGES) note("skipped", prettyPkg(s));
+  } else if (path.resolve(targetDir) !== path.resolve(defaultDir)) {
+    detail(`  · custom target — packages registered for next launch`);
+    for (const s of SETTINGS_PACKAGES) note("skipped", prettyPkg(s));
+  } else {
+    let list = "";
+    try { list = piOut(["list"]); } catch { list = ""; }
+    for (const spec of SETTINGS_PACKAGES) {
+      const pretty = prettyPkg(spec);
+      if (list.includes(spec)) { note("skipped", pretty); continue; }
+      const code = await piStep(`pi install ${spec}`, ["install", spec]);
+      let now = "";
+      try { now = piOut(["list"]); } catch { now = ""; }
+      if (code === 0 && now.includes(spec)) { detail(`  · ${pretty} — registered with pi`); note("installed", pretty); }
+      else { detail(`  ✖ ${pretty} not registered — see log (pi retries on next launch)`); note("updated", `${pretty} (failed — see log)`); }
+    }
   }
 
   // ── summary ──
+  liveStop();
   const secs = Math.round((Date.now() - startTime) / 1000);
   const elapsed = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
   line("");
-  if (ok) {
-    line(`${C.green}${C.bold}  ✓ Setup complete${C.reset}  ${C.dim}→ ${targetDir} · Kiln installed in ${elapsed}${C.reset}`);
-    const pv = cmdOut("pi", ["--version"]);
-    if (pv) line(`${C.dim}  pi ${pv}  ·  run: pi${C.reset}`);
-  } else {
-    line(`${C.yellow}${C.bold}  ⚠ Setup finished with warnings${C.reset}  ${C.dim}in ${elapsed} · see ${tmpLog}${C.reset}`);
+  if (ok) line(`${C.green}${C.bold}  ✓ Setup complete${C.reset}  ${C.dim}→ ${targetDir}${C.reset}`);
+  else line(`${C.yellow}${C.bold}  ⚠ Setup finished with warnings${C.reset}  ${C.dim}see ${tmpLog}${C.reset}`);
+  line("");
+  line("Summary:");
+  line("");
+  for (const name of ["skipped", "updated", "installed", "npm modules"]) {
+    line(`[${name}]`);
+    const items = buckets[name];
+    if (!items.length) line("(none)");
+    else for (const item of items) line(item);
+    line("");
   }
+  line(`Done in ${elapsed}`);
   line(`${C.dim}  log: ${tmpLog}${C.reset}\n`);
   process.exitCode = ok ? 0 : 1;
 }
