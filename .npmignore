@@ -27,6 +27,7 @@ taste.json
 .pi/
 tmp/
 temp/
+agent.bak.*
 pi-acp/
 agent/bin/
 agent/npm/
