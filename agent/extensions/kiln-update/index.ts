@@ -5,7 +5,7 @@
  * main branch. On mismatch, shows a nudge on every session start:
  *
  *   Kiln update available (0.2.0 → 0.3.0) — to update kiln to the newest
- *   version, run: kiln
+ *   version, run: npx @asterxsk/kiln
  *
  * Failures (offline, timeout, missing file) are silent — this must never
  * block or annoy. Bump `agent/version.txt` with every user-visible change;
@@ -79,7 +79,7 @@ export async function checkForUpdate(): Promise<{ local: string; remote: string 
 }
 
 function updateMessage(local: string, remote: string): string {
-	return `Kiln update available (${local} → ${remote}) — to update kiln to the newest version, run: kiln`;
+	return `Kiln update available (${local} → ${remote}) — to update kiln to the newest version, run: npx @asterxsk/kiln`;
 }
 
 export default function (pi: ExtensionAPI) {

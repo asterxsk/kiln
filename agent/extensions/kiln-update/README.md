@@ -5,7 +5,7 @@ Nudges you when your installed kiln is behind GitHub.
 - On every session start it compares `~/.pi/agent/version.txt` with
   `agent/version.txt` on the `main` branch.
 - On mismatch: `Kiln update available (X → Y) — to update kiln to the
-  newest version, run: kiln`
+  newest version, run: npx @asterxsk/kiln`
 - Silent when up to date, offline, or timed out (5s).
 
 ## Manual check
