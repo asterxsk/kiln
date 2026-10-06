@@ -1,16 +1,29 @@
 # kiln-update
 
-Nudges you when your installed kiln is behind GitHub.
+A minimal kiln header for pi, and a nudge when your install is behind GitHub.
 
-- On every session start it compares `~/.pi/agent/version.txt` with
-  `agent/version.txt` on the `main` branch.
-- On mismatch: `Kiln update available (X → Y) — to update kiln to the
-  newest version, run: npx @asterxsk/kiln`
+- Replaces the built-in startup header with:
+
+  ```
+  pi vX kiln vY
+  skills N extensions N
+  ```
+
+- Press `ctrl+o` to expand the header and list every installed skill and
+  extension.
+- When `~/.pi/agent/version.txt` is behind `agent/version.txt` on `main`, the
+  header also shows:
+
+  ```
+  Update Available. To update, run:
+  run npx @asterxsk/kiln@latest
+  ```
+
 - Silent when up to date, offline, or timed out (5s).
 
 ## Manual check
 
-`/kiln-update` — re-check on demand.
+`/kiln-update` — re-check on demand, refresh the header, and report the result.
 
 ## Releasing a new version
 

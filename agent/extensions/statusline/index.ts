@@ -1,18 +1,23 @@
 /**
  * Status Line — custom footer for pi
  *
- * Left:  provider/model using {thinking} effort • {percent}%/{window}
- * Right: $cost • path
+ * Left:  {model name} {thinking} · {path}
+ * Right: [auto compact in X% ]{percent}%/{window}
  *
- * Colors:
- *  - model / thinking / cost → white (theme "text")
- *  - path → blue (theme "accent")
- *  - context → white under 262k tokens, red over 262k
- *  - separators (•, spaces) → dim
+ * Colors (all truecolor, sampled from the reference image — no theme colors):
+ *  - model → orange  #E08A3C
+ *  - thinking → gray  #C6C6C6
+ *  - path → blue  #7AC0F5
+ *  - auto-compact countdown → orange  #E08A3C
+ *  - context text → yellow  #E5C04A
+ *  - separators (·, spaces) → dim  #808080
  *
- * Example (Muse Spark 1.2 contributor on high, 1% of 1M, $0.002, ~/.pi):
- *   left:  opencode-go/muse-spark-1.2-contributer using high effort • 1%/1M
- *   right: $0.002 • ~/.pi
+ * The "auto compact in X%" countdown appears only while context usage is within
+ * 5% of pi's compaction threshold (contextWindow - compaction.reserveTokens).
+ *
+ * Example (Claude Opus 5.5 on high, 97% of 1M, ~/.pi):
+ *   left:  Claude Opus 5.5 (9router combo) high · ~/.pi
+ *   right: auto compact in 1% 97%/1M
  *
  * Visibility: shown in chat and in overlay views (e.g. the subagent interactive
  * takeover, which is a fullscreen overlay). Hidden during editor takeovers such
@@ -28,7 +33,7 @@ import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 // DEBUG: bump to confirm the loaded build; dumps raw render bytes to status-line-debug.log
-const DEBUG_VERSION = 5;
+const DEBUG_VERSION = 6;
 const DEBUG_LOG = fileURLToPath(new URL("./status-line-debug.log", import.meta.url));
 function debugLog(msg: string) {
 	try {
@@ -66,39 +71,25 @@ function formatWindow(n: number): string {
 	return String(n);
 }
 
-function formatContext(ctx: ExtensionContext): { text: string; over: boolean } {
+function formatContext(ctx: ExtensionContext): { text: string; percent: number | null; window: number | undefined } {
 	const usage = ctx.getContextUsage();
 	const window = usage?.contextWindow ?? ctx.model?.contextWindow;
 
 	if (!usage || usage.tokens === null || usage.percent === null || !window) {
-		// Unknown tokens — show placeholder but never red
-		return { text: window ? `?%/${formatWindow(window)}` : "?%/??", over: false };
+		// Unknown tokens — show placeholder
+		return { text: window ? `?%/${formatWindow(window)}` : "?%/??", percent: null, window };
 	}
 
 	const percent = Math.round(usage.percent);
-	const over = usage.tokens > 262_000;
-	return { text: `${percent}%/${formatWindow(window)}`, over };
+	return { text: `${percent}%/${formatWindow(window)}`, percent, window };
 }
 
 function formatThinking(level: string | undefined): string {
-	if (!level || level === "off") return "off";
-	return `using ${level} effort`;
+	return level && level !== "off" ? level : "off";
 }
 
-function computeCost(ctx: ExtensionContext): number {
-	let total = 0;
-	try {
-		for (const e of ctx.sessionManager.getBranch()) {
-			if (e.type === "message" && (e as unknown as { message?: { role?: string; usage?: { cost?: { total?: number } } } }).message?.role === "assistant") {
-				const usage = (e as unknown as { message: { usage?: { cost?: { total?: number } } } }).message.usage;
-				if (usage?.cost?.total) total += usage.cost.total;
-			}
-		}
-	} catch {
-		// ignore
-	}
-	return total;
-}
+// Mirrors pi's DEFAULT_COMPACTION_SETTINGS.reserveTokens (core/compaction).
+const DEFAULT_COMPACTION_RESERVE = 16384;
 
 // ---- takeover visibility ----
 //
@@ -203,40 +194,42 @@ export default function (pi: ExtensionAPI) {
 						debugLog(hideReason ? `hidden (${hideReason})` : "shown");
 					}
 					if (hideReason) return [""];
-					const modelId = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no-model";
+					const modelName = ctx.model?.name || ctx.model?.id || "no-model";
 					const thinkingLevel = (pi.getThinkingLevel() as string | undefined) ?? (ctx.thinkingLevel as string | undefined) ?? "off";
 					const thinkingText = formatThinking(thinkingLevel);
-					const { text: ctxText, over } = formatContext(ctx);
-					const cost = computeCost(ctx);
-					const costStr = `$${cost.toFixed(3)}`;
+					const { text: ctxText, percent, window } = formatContext(ctx);
 					const cwdStr = formatCwd(ctx.cwd);
 
-					// --- plain strings for width math (no ANSI, so hyphens can't lose color in truncate/wrap) ---
-					const leftPlain = `${modelId} ${thinkingText} • ${ctxText}`;
-					const rightPlain = `${costStr} • ${cwdStr}`;
-					const leftW = leftPlain.length; // all ascii, visibleWidth == length
-					const rightW = rightPlain.length;
-					if (width === 1) return [theme.fg("dim", "─")];
+					// Auto-compact countdown: appears within 5% of the compaction threshold
+					const compaction = pi.getSettings().compaction;
+					const modelKey = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+					const reserve = (modelKey ? compaction?.modelOverrides?.[modelKey]?.reserveTokens : undefined) ?? compaction?.reserveTokens ?? DEFAULT_COMPACTION_RESERVE;
+					const remaining = percent !== null && window ? ((window - reserve) / window) * 100 - percent : null;
+					const autoCompactText = (compaction?.enabled ?? true) && remaining !== null && remaining < 5 ? `auto compact in ${Math.max(0, Math.round(remaining))}%` : "";
 
-					// Colors — force true white (#FFFFFF) so "-" never falls back to dim grey
-					const W_OPEN = "\x1b[38;2;255;255;255m";
-					const W_CLOSE = "\x1b[39m";
-					const white = (s: string) => `${W_OPEN}${s}${W_CLOSE}`;
-					const blue = (s: string) => theme.fg("accent", s);
-					const dim = (s: string) => theme.fg("dim", s);
-					const red = (s: string) => theme.fg("error", s);
-					const sepPlain = " • ";
-					const sep = dim(sepPlain);
+					// --- plain strings for width math (no ANSI, so hyphens can't lose color in truncate/wrap) ---
+					const leftPlain = `${modelName} ${thinkingText} · ${cwdStr}`;
+					const rightPlain = `${autoCompactText ? `${autoCompactText} ` : ""}${ctxText}`;
+					const leftW = visibleWidth(leftPlain);
+					const rightW = visibleWidth(rightPlain);
+					// Palette sampled from the reference image (truecolor, theme-independent)
+					const tc = (r: number, g: number, b: number) => (s: string) => `\x1b[38;2;${r};${g};${b}m${s}\x1b[39m`;
+					const orange = tc(224, 138, 60);
+					const yellow = tc(229, 192, 74);
+					const gray = tc(198, 198, 198);
+					const blue = tc(122, 192, 245);
+					const dim = tc(128, 128, 128);
+					const sep = dim(" · ");
+					if (width === 1) return [dim("─")];
+
+					const ctxColored = yellow(ctxText);
+					const rightColored = (autoCompactText ? `${orange(autoCompactText)} ` : "") + ctxColored;
 
 					// Build ANSI line only after width decisions
-					let left: string;
-					let right: string;
-					const gapPlain = Math.max(1, width - leftW - rightW);
 					if (leftW + 1 + rightW <= width) {
-						left = white(modelId) + dim(" ") + white(thinkingText) + sep + (over ? red(ctxText) : white(ctxText));
-						right = white(costStr) + sep + blue(cwdStr);
-						const gap = " ".repeat(gapPlain);
-						return [left + gap + right];
+						const left = orange(modelName) + dim(" ") + gray(thinkingText) + sep + blue(cwdStr);
+						const gap = " ".repeat(Math.max(1, width - leftW - rightW));
+						return [left + gap + rightColored];
 					}
 					// Not enough width: truncate leftPlain first (keep right intact), then color the truncated pieces
 					const maxLeft = Math.max(0, width - rightW - 1);
@@ -244,19 +237,17 @@ export default function (pi: ExtensionAPI) {
 					if (leftPlain.length > maxLeft) {
 						leftTruncPlain = maxLeft <= 3 ? leftPlain.slice(0, maxLeft) : leftPlain.slice(0, maxLeft - 3) + "...";
 					}
-					// Re-derive left parts from truncated plain (approx: truncate from the end)
-					// Simpler: color the whole truncated left as white, but keep "•" dim and ctx red/white tail
-					// Find where " • " sits in leftPlain
-					const sepIdx = leftPlain.lastIndexOf(sepPlain);
-					if (sepIdx !== -1 && leftTruncPlain.length > sepIdx) {
+					// Re-color truncated left: path tail is blue, the last " · " dim, model+thinking orange
+					const sepIdx = leftTruncPlain.lastIndexOf(" · ");
+					let left: string;
+					if (sepIdx !== -1) {
 						const head = leftTruncPlain.slice(0, sepIdx);
-						const tail = leftTruncPlain.slice(sepIdx + sepPlain.length);
-						left = white(head) + sep + (over ? red(tail) : white(tail));
+						const tail = leftTruncPlain.slice(sepIdx + 3);
+						left = orange(head) + sep + blue(tail);
 					} else {
-						left = white(leftTruncPlain);
+						left = orange(leftTruncPlain);
 					}
-					right = white(costStr) + sep + blue(cwdStr);
-					let line = left + " " + right;
+					let line = left + " " + rightColored;
 					// Final safety: truncateToWidth handles ANSI correctly for the final line
 					if (visibleWidth(line) > width) line = truncateToWidth(line, width);
 					debugLog(`width=${width} line=${JSON.stringify(line)}`);
@@ -276,7 +267,7 @@ export default function (pi: ExtensionAPI) {
 		activeTui = undefined;
 	});
 
-	// Streaming: request render for live cost/context updates
+	// Streaming: request render for live context updates
 	pi.on("agent_start", () => activeTui?.requestRender());
 	pi.on("agent_settled", () => activeTui?.requestRender());
 }
