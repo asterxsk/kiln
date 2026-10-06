@@ -1,6 +1,6 @@
 # kiln — pi agent configuration
 
-> A forge-tuned, self-improving `~/.pi/agent` for [pi](https://github.com/badlogic/pi-mono): curated extensions, opinionated defaults, and an installer you can re-run without fear.
+> A compact-tuned, self-improving `~/.pi/agent` for [pi](https://github.com/badlogic/pi-mono): curated extensions, opinionated defaults, and an installer you can re-run without fear.
 
 <p align="center">
   <a href="https://github.com/badlogic/pi-mono"><img src="https://badges.ws/badge/PI-0.84.4+-8b5cf6?style=for-the-badge&label_color=101418" alt="pi >=0.84.4" /></a>
@@ -23,7 +23,7 @@ npx @asterxsk/kiln --yes
 
 What the installer does:
 
-1. Installs or updates `pi` itself (`@earendil-works/pi-coding-agent`)
+1. Installs or updates `pi` itself via the official script — `curl -fsSL https://pi.dev/install.sh | sh` on Linux/macOS, `powershell -c "irm https://pi.dev/install.ps1 | iex"` on Windows (never npm)
 2. Installs the `pi-context-usage` and `pi-compact-tools` packages
 3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten, your `settings.json`, `taste/`, sessions, and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
@@ -53,7 +53,7 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 
 - **Curated extensions** — 11 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
 - **Safe installer** — public HTTPS clone, atomic overwrites, narrow backups of only the files it replaces. Your config is never collateral damage.
-- **Forge-first UX** — `theme: forge`, fullscreen TUI, high thinking by default. Built for long sessions.
+- **Compact-first UX** — `pi-compact-tools` (Claude / Codex / Compact tool rows), `theme: github-dark-pro`, fullscreen TUI, high thinking by default. Built for long sessions.
 - **Secret-free by construction** — `auth.json`, `sessions/`, `trust.json`, `models-store.json`, `bin/`, and `themes/.pi` are `.gitignore`'d. The repo holds config, never credentials.
 - **Cross-platform** — one Node installer for macOS, Linux, and Windows.
 
@@ -101,7 +101,7 @@ Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybinding
 
 ```json
 {
-  "theme": "forge",
+  "theme": "github-dark-pro",
   "tuiMode": "fullscreen",
   "defaultThinkingLevel": "high",
   "packages": ["npm:pi-context-usage", "npm:pi-compact-tools"]
