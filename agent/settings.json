@@ -1,0 +1,23 @@
+{
+  "packages": [
+    "npm:pi-context-usage",
+    "npm:pi-compact-tools"
+  ],
+  "terminal": {
+    "showTerminalProgress": true
+  },
+  "hideThinkingBlock": false,
+  "collapseChangelog": true,
+  "quietStartup": false,
+  "defaultProjectTrust": "always",
+  "tuiMode": "fullscreen",
+  "fullscreenScrollbar": "always",
+  "theme": "github-dark-pro",
+  "cacheWarming": "idle",
+  "markdown": {
+    "mermaid": "final"
+  },
+  "editorPaddingX": 1,
+  "showHardwareCursor": false,
+  "fullscreenCopyOnSelect": false
+}

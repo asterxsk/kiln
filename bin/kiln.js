@@ -10,14 +10,15 @@
 //   npm i -g @asterxsk/kiln && kiln --yes
 //   bunx @asterxsk/kiln --yes
 //   node bin/kiln.js --target /tmp/pi-test --skip-pi --skip-packages --yes
-//   node bin/kiln.js --overwrite-settings   # replace settings.json (asks by default)
 //
 // Already-installed items are skipped; outdated global packages are updated.
 // Only one timestamped backup (<target>.bak.*) is kept; the clone temp dir
 // under ~/.pi/tmp/kiln-* is always removed.
 //
-// Safe to re-run. Managed files are force-overwritten; per-user files
-// (settings.json, taste.md, auth.json, sessions, etc.) are preserved.
+// Safe to re-run. Managed files are force-overwritten; per-user state
+// (taste.md, auth.json, sessions, etc.) is preserved. settings.json and
+// compact-tools.json are seeded from repo defaults and refreshed while still
+// untouched — once you edit them, kiln leaves them alone.
 "use strict";
 
 const { spawn, spawnSync } = require("node:child_process");
@@ -60,7 +61,6 @@ function parseArgs(argv) {
     branch: process.env.PI_CONFIG_BRANCH || DEFAULT_BRANCH,
     target: process.env.PI_AGENT_DIR || "",
     skipPi: false, skipPackages: false, yes: false, local: false,
-    settingsMode: "ask", // ask | overwrite | keep
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -70,11 +70,9 @@ function parseArgs(argv) {
     else if (a === "--skip-pi") o.skipPi = true;
     else if (a === "--skip-packages") o.skipPackages = true;
     else if (a === "--local") o.local = true;
-    else if (a === "--overwrite-settings") o.settingsMode = "overwrite";
-    else if (a === "--keep-settings") o.settingsMode = "keep";
     else if (a === "--yes" || a === "-y") o.yes = true;
     else if (a === "--help" || a === "-h") {
-      console.log("Usage: kiln [--repo URL] [--branch BRANCH] [--target DIR] [--local] [--skip-pi] [--skip-packages] [--overwrite-settings|--keep-settings] [--yes]");
+      console.log("Usage: kiln [--repo URL] [--branch BRANCH] [--target DIR] [--local] [--skip-pi] [--skip-packages] [--yes]");
       process.exit(0);
     } else if (a === "--") break;
     else if (a.startsWith("-")) { console.error(`unknown arg: ${a}`); process.exit(1); }
@@ -217,16 +215,18 @@ function latestPkgVersion(name) {
   const v = (out || "").split(/\s+/)[0].trim();
   return /^[0-9][0-9A-Za-z.+-]*$/.test(v) ? v : "";
 }
-// Synchronous Y/N prompt (default N). False when non-interactive.
-function askYN(question) {
-  try {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) return false;
-    process.stdout.write(question);
-    const buf = Buffer.alloc(16);
-    const n = fs.readSync(0, buf, 0, 16);
-    const ans = buf.slice(0, n).toString().trim().toLowerCase();
-    return ans === "y" || ans === "yes";
-  } catch { return false; }
+// Structural equality that ignores object key order.
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (typeof a === "object") {
+    const ka = Object.keys(a), kb = Object.keys(b);
+    return ka.length === kb.length && ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
+  }
+  return false;
 }
 // Keep only the newest sibling backup (<target>.bak.*); delete the rest.
 function pruneBackups(targetDir, keep) {
@@ -311,13 +311,6 @@ async function main() {
 
   title();
   const targetDir = resolveTarget(args.target);
-  // Settings decision up front (only when interactive with no explicit flag).
-  if (args.settingsMode === "ask" && !args.yes && process.stdin.isTTY && process.stdout.isTTY
-      && fs.existsSync(path.join(targetDir, "settings.json"))) {
-    args.settingsMode = askYN("  Overwrite settings (y/n): ") ? "overwrite" : "keep";
-  } else if (args.settingsMode === "ask" && (args.yes || !process.stdin.isTTY)) {
-    args.settingsMode = "keep";
-  }
   line(`${C.dim}  target  ${C.reset}${targetDir}`);
   line(`${C.dim}  repo    ${C.reset}${args.repo}  ${C.dim}(${args.branch})${C.reset}`);
   line(`${C.dim}  log     ${C.reset}${tmpLog}\n`);
@@ -435,36 +428,25 @@ async function main() {
       if (!selfInstall) fs.copyFileSync(path.join(sourceRoot, f), path.join(targetDir, f));
       copied++;
     }
-    let freshSettings = false;
+    // settings.json: seed kiln's defaults, refresh while untouched, never stomp
+    // user edits (any difference from the baseline counts as an edit).
     const settingsPath = path.join(targetDir, "settings.json");
     const repoSettings = path.join(sourceRoot, "settings.json");
-    if (!fs.existsSync(settingsPath) && fs.existsSync(repoSettings)) {
-      fs.copyFileSync(repoSettings, settingsPath);
-      detail(`  · created settings.json from repo defaults`);
-      note("installed", "settings.json");
-      freshSettings = true;
-    } else if (fs.existsSync(settingsPath)) {
-      const mode = args.settingsMode === "ask" ? "keep" : args.settingsMode; // decided up front
-      if (mode === "overwrite" && fs.existsSync(repoSettings)) {
-        if (bak) { try { fs.copyFileSync(settingsPath, path.join(bak, "settings.json")); } catch {} }
-        fs.copyFileSync(repoSettings, settingsPath);
-        detail(`  · overwrote settings.json from repo defaults`);
-        note("updated", "settings.json");
-        freshSettings = true;
-      } else {
+    if (fs.existsSync(repoSettings)) {
+      const baseline = JSON.parse(fs.readFileSync(repoSettings, "utf8"));
+      baseline.packages = [...new Set([...(baseline.packages || []), ...SETTINGS_PACKAGES])];
+      let current = null;
+      if (fs.existsSync(settingsPath)) {
+        try { current = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
+      }
+      if (current && !deepEqual(current, baseline)) {
         detail(`  · kept existing settings.json`);
         note("skipped", "settings.json");
+      } else {
+        fs.writeFileSync(settingsPath, JSON.stringify(baseline, null, 2) + "\n");
+        detail(`  · settings.json — kiln defaults`);
+        note(current ? "updated" : "installed", "settings.json");
       }
-    }
-    if (freshSettings) {
-      try {
-        const p = path.join(targetDir, "settings.json");
-        const j = JSON.parse(fs.readFileSync(p, "utf8"));
-        j.packages = j.packages || [];
-        let changed = false;
-        for (const pkg of SETTINGS_PACKAGES) if (!j.packages.includes(pkg)) { j.packages.push(pkg); changed = true; }
-        if (changed) { fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n"); detail("  · patched settings.json packages → compact-tools + context"); }
-      } catch {}
     }
     for (const t of ["taste.md", "taste", "taste.json"]) {
       const tp = path.join(targetDir, t);
@@ -473,6 +455,33 @@ async function main() {
         const s = path.join(sourceRoot, t);
         if (fs.statSync(s).isDirectory()) copyTree(s, tp, new Set());
         else fs.copyFileSync(s, tp);
+      }
+    }
+
+    // compact-tools tool-row style: seed kiln's default, but never overwrite a
+    // style the user switched to. Other keys they tuned are preserved either way.
+    const repoCompact = path.join(sourceRoot, "compact-tools.json");
+    if (fs.existsSync(repoCompact)) {
+      const compactPath = path.join(targetDir, "compact-tools.json");
+      let defaultStyle = "codex";
+      try {
+        const d = JSON.parse(fs.readFileSync(repoCompact, "utf8"));
+        if (d && typeof d.style === "string") defaultStyle = d.style;
+      } catch {}
+      let current = null;
+      if (fs.existsSync(compactPath)) {
+        try {
+          const e = JSON.parse(fs.readFileSync(compactPath, "utf8"));
+          if (e && typeof e === "object" && !Array.isArray(e)) current = e;
+        } catch {}
+      }
+      if (current && typeof current.style === "string" && current.style !== defaultStyle) {
+        detail(`  · kept existing compact-tools.json (${current.style} style)`);
+        note("skipped", "compact-tools.json");
+      } else {
+        fs.writeFileSync(compactPath, JSON.stringify({ ...(current || {}), style: defaultStyle }, null, 2) + "\n");
+        detail(`  · compact-tools → ${defaultStyle} style`);
+        note(current ? "updated" : "installed", "compact-tools.json");
       }
     }
 

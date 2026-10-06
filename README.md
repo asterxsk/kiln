@@ -25,10 +25,10 @@ What the installer does:
 
 1. Installs or updates `pi` itself via the official script — `curl -fsSL https://pi.dev/install.sh | sh` on Linux/macOS, `powershell -c "irm https://pi.dev/install.ps1 | iex"` on Windows (never npm)
 2. Installs the `pi-context-usage` and `pi-compact-tools` packages
-3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten, your `settings.json`, `taste/`, sessions, and secrets are left alone
+3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten; `settings.json` and `compact-tools.json` are seeded from the repo's defaults (and refreshed while still untouched), while `taste/` and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
-**Safe to re-run.** It back ups the extensions and config files it replaces, never touches per-user state, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
+**Safe to re-run.** It backs up the extensions and config files it replaces, leaves anything you've edited in `settings.json` / `compact-tools.json` alone, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
 
 ### Publishing the npm package
 
@@ -86,29 +86,34 @@ Each extension lives at `agent/extensions/{name}/index.ts` and installs independ
 └── agent/
     ├── AGENTS.md                # behavioral guidelines (merged into every session)
     ├── README.md                # pointer → ../README.md
-    ├── settings.json            # canonical settings (the installer never overwrites yours)
+    ├── settings.json            # canonical defaults (seeded once, then yours)
+    ├── compact-tools.json       # tool-row style (defaults to codex)
     ├── keybindings.json         # TUI keybindings
     └── extensions/              # self-contained pi extensions
 ```
 
-Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybindings.json`, `agent/AGENTS.md`, `README.md`. Everything else is local-only.
+Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybindings.json`, `agent/compact-tools.json`, `agent/AGENTS.md`, `README.md`. Everything else is local-only.
 
 ---
 
 ## Configuration
 
-`agent/settings.json` is the source of truth. The flavor in one glance:
+`agent/settings.json` is the source of truth — a curated baseline with machine- and user-specific fields (default model/provider, hidden/enabled models, device id, disabled skills) stripped out. First install seeds it; after that the installer refreshes it only while it still matches the baseline exactly, so any edit you make is respected. The flavor in one glance:
 
 ```json
 {
   "theme": "github-dark-pro",
   "tuiMode": "fullscreen",
-  "defaultThinkingLevel": "high",
+  "defaultProjectTrust": "always",
   "packages": ["npm:pi-context-usage", "npm:pi-compact-tools"]
 }
 ```
 
-Your live copy at `~/.pi/agent/settings.json` is yours — the installer patches the `packages` list in (so compact-tools and context stay registered) and otherwise leaves it alone. See the full file for retry budgets, compaction, follow-up mode, and the rest.
+Your live copy at `~/.pi/agent/settings.json` is yours — pick your own models, favorites, and providers in it; kiln won't touch them once the file diverges from the baseline.
+
+### Tool rows
+
+`agent/compact-tools.json` seeds the `pi-compact-tools` style to `codex` on install. If you switch styles with `/compact-tools`, the installer keeps your choice on re-runs — it only (re)applies the default while the style is unchanged.
 
 ### Keybindings
 

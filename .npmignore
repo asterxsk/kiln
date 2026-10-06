@@ -13,7 +13,6 @@ models.json
 sessions/
 
 # machine-local config + caches (root and agent copies)
-agent/settings.json
 web-search.json
 web-search-cache/
 

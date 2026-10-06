@@ -1,19 +1,19 @@
 # ── Pi config repo — publish-safe .gitignore ──────────────────────────────
 # Only these are tracked:
 #   README.md, agent/AGENTS.md, agent/README.md, agent/settings.json
-#   (canonical defaults — never overwritten on install),
-#   agent/keybindings.json, agent/install.sh, agent/install.ps1,
-#   agent/extensions, agent/version.txt
+#   (canonical defaults — seeded once, never overwritten after user edits),
+#   agent/compact-tools.json, agent/keybindings.json, agent/install.sh,
+#   agent/install.ps1, agent/extensions, agent/version.txt
 # Everything below is local/secret/build and MUST NOT be committed.
 
 # Installer scratch: clone dirs, setup logs, local test targets (all under ~/.pi/tmp)
 /tmp/
 /temp/
 
-# Secrets / trust / live session state (incl. settings — machine-local, never seed)
+# Secrets / trust / live session state
+# (settings.json is a tracked default; only your live ~/.pi/agent copy is local)
 auth.json
 trust.json
-agent/settings.json
 sessions/
 pi-acp/
 models-store.json
