@@ -18,6 +18,12 @@ Anything other than **Allow** — including Deny or dismissing with Esc —
 blocks the command. In non-interactive mode (no UI) deletion commands are
 blocked by default.
 
+## Toggle
+
+Run `/destructive` to flip the guard on or off for the current session. It
+starts enabled and resets to enabled when pi restarts, so the safe state is
+the default.
+
 ## Blocked commands
 
 | Group | Matches |
@@ -27,5 +33,6 @@ blocked by default.
 
 ## Files
 
-- `index.ts` — `tool_call` hook, command matching (`isDestructiveCommand`), confirm prompt
+- `index.ts` — `tool_call` hook, command matching (`isDestructiveCommand`), confirm prompt, `/destructive` toggle
+- `index.test.ts` — `node --test` suite for matching and the toggle
 - `README.md` — this file

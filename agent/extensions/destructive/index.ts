@@ -11,6 +11,9 @@
  *
  * Anything else (including Deny, or dismissing with Esc) blocks the command.
  * In non-interactive mode (no UI) deletion commands are blocked by default.
+ *
+ * Run `/destructive` to toggle the guard on or off for the current session.
+ * It defaults to on and resets to on when pi restarts.
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -59,7 +62,22 @@ export function isDestructiveCommand(command: string): boolean {
 }
 
 export default function (pi: ExtensionAPI) {
+  let enabled = true;
+
+  pi.registerCommand("destructive", {
+    description: "Toggle the destructive (deletion) command guard on/off",
+    handler: async (_args, ctx) => {
+      enabled = !enabled;
+      ctx.ui.notify(
+        `Destructive command guard ${enabled ? "enabled" : "disabled"}`,
+        enabled ? "info" : "warning",
+      );
+    },
+  });
+
   pi.on("tool_call", async (event, ctx) => {
+    if (!enabled) return undefined;
+
     if (event.toolName !== "bash" && event.toolName !== "powershell") {
       return undefined;
     }
