@@ -405,7 +405,7 @@ async function main() {
       bak = `${targetDir}.bak.${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
       detail(`  · backup ${targetDir}/extensions → ${bak}`);
       fs.mkdirSync(bak, { recursive: true });
-      for (const f of ["AGENTS.md", "keybindings.json", "README.md"]) {
+      for (const f of ["AGENTS.md", "keybindings.json", "README.md", "version.txt"]) {
         const s = path.join(targetDir, f);
         if (fs.existsSync(s)) try { fs.copyFileSync(s, path.join(bak, f)); } catch {}
       }
@@ -423,7 +423,7 @@ async function main() {
     let copied = 0;
     const selfInstall = path.resolve(sourceRoot) === path.resolve(targetDir);
     if (selfInstall) detail(`  · source == target — skipping file copy (self-install)`);
-    for (const f of ["AGENTS.md", "keybindings.json", "README.md"]) {
+    for (const f of ["AGENTS.md", "keybindings.json", "README.md", "version.txt"]) {
       if (!fs.existsSync(path.join(sourceRoot, f))) continue;
       if (!selfInstall) fs.copyFileSync(path.join(sourceRoot, f), path.join(targetDir, f));
       copied++;
