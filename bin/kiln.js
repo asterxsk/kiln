@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // kiln installer (npm) — installs pi, the compact-tools + context packages, and the curated agent config.
-//  1) Install/update pi (@earendil-works/pi-coding-agent)
+//  1) Install/update pi via the official script (curl on Unix, irm on Windows — never npm)
 //  2) Install pi packages (pi-context-usage, pi-compact-tools)
 //  3) Install custom config (AGENTS.md, keybindings, extensions …)
 //  4) Install per-extension npm deps via each extension's own installer
@@ -192,6 +192,13 @@ function piStep(label, args) {
   if (process.platform === "win32") return runStep("pkg", label, "pi " + args.map(q).join(" "), [], { shell: true });
   return runStep("pkg", label, "pi", args);
 }
+// pi installs via its official script — curl on Unix, irm on Windows. Never npm.
+function piInstallStep(step, label) {
+  const cmd = process.platform === "win32"
+    ? 'powershell -NoProfile -Command "irm https://pi.dev/install.ps1 | iex"'
+    : "curl -fsSL https://pi.dev/install.sh | sh";
+  return runStep(step, label, cmd, [], { shell: true });
+}
 const npmVer = process.platform === "win32" ? cmdOutShell("npm.cmd --version") : cmdOut("npm", ["--version"]);
 
 // Installed global version of a package ("" when not installed).
@@ -345,7 +352,7 @@ async function main() {
       note("skipped", "pi");
     } else {
       const label = installed ? `updating pi ${installed} → ${latest || "latest"}` : `installing pi`;
-      const code = await npmStep("1/4", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
+      const code = await piInstallStep("1/4", label);
       if (code === 0) {
         detail(`  · ${label} — ${cmdOut("pi", ["--version"]) || "?"}`);
         note(installed ? "updated" : "installed", "pi");
@@ -357,7 +364,7 @@ async function main() {
     }
   } else {
     const label = `installing pi`;
-    const code = await npmStep("1/4", label, ["install", "-g", `${PI_PACKAGE}@latest`, "--no-audit", "--no-fund", "--min-release-age=0"]);
+    const code = await piInstallStep("1/4", label);
     if (code === 0) {
       detail(`  · ${label} — ${cmdOut("pi", ["--version"]) || "?"}`);
       note("installed", "pi");
