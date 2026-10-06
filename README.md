@@ -24,7 +24,7 @@ npx @asterxsk/kiln --yes
 What the installer does:
 
 1. Installs or updates `pi` itself (`@earendil-works/pi-coding-agent`)
-2. Installs the `pi-context-usage` and `@baretread/pi-forge` packages
+2. Installs the `pi-context-usage` and `pi-compact-tools` packages
 3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten, your `settings.json`, `taste/`, sessions, and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
@@ -104,11 +104,11 @@ Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybinding
   "theme": "forge",
   "tuiMode": "fullscreen",
   "defaultThinkingLevel": "high",
-  "packages": ["npm:pi-context-usage", "npm:@baretread/pi-forge"]
+  "packages": ["npm:pi-context-usage", "npm:pi-compact-tools"]
 }
 ```
 
-Your live copy at `~/.pi/agent/settings.json` is yours — the installer patches the `packages` list in (so forge and context stay registered) and otherwise leaves it alone. See the full file for retry budgets, compaction, follow-up mode, and the rest.
+Your live copy at `~/.pi/agent/settings.json` is yours — the installer patches the `packages` list in (so compact-tools and context stay registered) and otherwise leaves it alone. See the full file for retry budgets, compaction, follow-up mode, and the rest.
 
 ### Keybindings
 

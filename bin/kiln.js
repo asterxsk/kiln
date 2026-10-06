@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// kiln installer (npm) — installs pi, the forge + context packages, and the curated agent config.
+// kiln installer (npm) — installs pi, the compact-tools + context packages, and the curated agent config.
 //  1) Install/update pi (@earendil-works/pi-coding-agent)
-//  2) Install pi packages (pi-context-usage, @baretread/pi-forge)
+//  2) Install pi packages (pi-context-usage, pi-compact-tools)
 //  3) Install custom config (AGENTS.md, keybindings, extensions …)
 //  4) Install per-extension npm deps via each extension's own installer
 //
@@ -30,8 +30,8 @@ const PI_PACKAGE = "@earendil-works/pi-coding-agent";
 const NODE_MIN = [22, 19, 0];
 const DEFAULT_REPO = "https://github.com/asterxsk/kiln";
 const DEFAULT_BRANCH = "main";
-const PACKAGES = ["pi-context-usage@latest", "@baretread/pi-forge@latest"];
-const SETTINGS_PACKAGES = ["npm:pi-context-usage", "npm:@baretread/pi-forge"];
+const PACKAGES = ["pi-context-usage@latest", "pi-compact-tools@latest"];
+const SETTINGS_PACKAGES = ["npm:pi-context-usage", "npm:pi-compact-tools"];
 
 const startTime = Date.now();
 let clonedTmp = "";
@@ -49,7 +49,7 @@ for (const k of ["npm_config_allow_scripts", "NPM_CONFIG_ALLOW_SCRIPTS"]) delete
 // ── summary buckets ─────────────────────────────────────────────────────
 // Every completed item is recorded here; the final Summary prints them all.
 const buckets = { skipped: [], updated: [], installed: [], "npm modules": [] };
-const FRIENDLY = { "pi-context-usage": "context extension", "@baretread/pi-forge": "forge extension" };
+const FRIENDLY = { "pi-context-usage": "context extension", "pi-compact-tools": "compact tools extension" };
 function note(bucket, name) { buckets[bucket].push(name); }
 function prettyPkg(spec) { return FRIENDLY[spec.replace(/^npm:/, "")] || spec; }
 
@@ -142,7 +142,7 @@ function liveStop() {
 function title() {
   line("");
   line(`  ${C.bold}◆ Pi Setup${C.reset}`);
-  line(`  ${C.dim}custom agent config  ·  pi + forge + extensions${C.reset}`);
+  line(`  ${C.dim}custom agent config  ·  pi + compact-tools + extensions${C.reset}`);
   if (!isTTY) for (const r of artLines(0)) line(`  ${r}`);
   line("");
 }
@@ -456,7 +456,7 @@ async function main() {
         j.packages = j.packages || [];
         let changed = false;
         for (const pkg of SETTINGS_PACKAGES) if (!j.packages.includes(pkg)) { j.packages.push(pkg); changed = true; }
-        if (changed) { fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n"); detail("  · patched settings.json packages → forge + context"); }
+        if (changed) { fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n"); detail("  · patched settings.json packages → compact-tools + context"); }
       } catch {}
     }
     for (const t of ["taste.md", "taste", "taste.json"]) {
@@ -541,7 +541,7 @@ async function main() {
     else detail(`  ⚠ extension deps ${failed.length} failed: ${failed.join(", ")} — see log`);
   }
 
-  // ── pi package ensure (forge + context actually registered with pi) ──
+  // ── pi package ensure (compact-tools + context actually registered with pi) ──
   // `pi list` is truth: global installs mean nothing to pi (it uses its own dir).
   const defaultDir = path.join(os.homedir(), ".pi", "agent");
   if (args.skipPackages) {
