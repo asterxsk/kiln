@@ -27,8 +27,6 @@ import {
 import { activityMonitor, type ActivityEntry } from "./activity.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { isExaAvailable } from "./exa.ts";
-import { getActiveGoogleEmail, getGeminiWebAvailabilityDiagnostic, getGeminiWebAvailabilityDiagnosticDetails, isGeminiWebAvailable } from "./gemini-web.ts";
-import { isBrowserCookieAccessAllowed } from "./gemini-web-config.ts";
 import { buildSearchErrorPlan, type SearchErrorDetails, type SearchErrorPlan } from "./render-search-error.ts";
 import {
 	buildResearchArtifact,
@@ -104,7 +102,7 @@ interface WebSearchConfig {
 		enabled?: boolean;
 	};
 	tools?: Partial<Record<keyof ToolNames, { enabled?: boolean }>>;
-	commands?: Partial<Record<"websearch" | "search" | "google-account", { enabled?: boolean }>>;
+	commands?: Partial<Record<"websearch" | "search", { enabled?: boolean }>>;
 	toolNames?: Partial<ToolNames>;
 	shortcuts?: {
 		activity?: KeyId;
@@ -158,7 +156,7 @@ function isToolEnabled(config: WebSearchConfig, key: keyof ToolNames): boolean {
 	return key !== "webSearch" && key !== "sourceCheck" || config.webSearch?.enabled !== false;
 }
 
-function isCommandEnabled(config: WebSearchConfig, name: "websearch" | "search" | "google-account"): boolean {
+function isCommandEnabled(config: WebSearchConfig, name: "websearch" | "search"): boolean {
 	return config.commands?.[name]?.enabled !== false;
 }
 
@@ -1617,54 +1615,6 @@ export default function (pi: ExtensionAPI) {
 			return new Text(statusLine + "\n" + theme.fg("dim", preview), 0, 0);
 		},
 	});
-	}
-
-	if (isCommandEnabled(initConfig, "google-account")) pi.registerCommand("google-account", {
-		description: "Show the active Google account for Gemini Web",
-		handler: async () => {
-			if (!isBrowserCookieAccessAllowed()) {
-				pi.sendMessage({
-					customType: "google-account",
-					content: [{ type: "text", text: `Gemini Web browser cookie access is disabled. Set allowBrowserCookies: true in ${WEB_SEARCH_CONFIG_PATH} to enable it.` }],
-					display: true,
-					details: { available: false, cookieAccessAllowed: false },
-				}, { triggerTurn: true, deliverAs: "followUp" });
-				return;
-			}
-
-			const cookies = await isGeminiWebAvailable();
-			if (!cookies) {
-				const diagnostic = getGeminiWebAvailabilityDiagnostic();
-				const diagnosticDetails = getGeminiWebAvailabilityDiagnosticDetails();
-				const attempted = formatCookieAttempts(diagnosticDetails?.attempts ?? []);
-				const text = diagnostic
-					? `Gemini Web is unavailable: ${diagnostic}${attempted ? ` Attempted browser profiles: ${attempted}.` : ""}`
-					: "Gemini Web is unavailable. Sign into gemini.google.com in a supported Chromium-based browser.";
-				pi.sendMessage({
-					customType: "google-account",
-					content: [{ type: "text", text }],
-					display: true,
-					details: { available: false, cookieAccessAllowed: true, diagnostic, cookieDiagnostic: diagnosticDetails },
-				}, { triggerTurn: true, deliverAs: "followUp" });
-				return;
-			}
-
-			const email = await getActiveGoogleEmail(cookies);
-			const text = email
-				? `Active Google account: ${email}`
-				: "Gemini Web is available, but the active Google account could not be determined.";
-
-			pi.sendMessage({
-				customType: "google-account",
-				content: [{ type: "text", text }],
-				display: true,
-				details: { available: true, email: email ?? null },
-			}, { triggerTurn: true, deliverAs: "followUp" });
-		},
-	});
-
-	function formatCookieAttempts(attempts: { browser: string; profile: string; status: string }[]): string {
-		return attempts.map(({ browser, profile, status }) => `${browser}/${profile} (${status})`).join(", ");
 	}
 
 	if (isCommandEnabled(initConfig, "search")) pi.registerCommand("search", {

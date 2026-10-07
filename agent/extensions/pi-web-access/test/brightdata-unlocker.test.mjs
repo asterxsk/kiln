@@ -95,7 +95,7 @@ test("Bright Data Web Unlocker maps markdown and sends the credential and Unlock
 	// iteration, and the per-hop validateRemoteUrl, the cross-origin credential
 	// strip and the 5-hop cap are all unreachable in production while every
 	// redirect test below still passes. Same idiom as
-	// test/gemini-web-cookie-opt-in.test.mjs:42 and test/search-providers.test.mjs:173.
+	// test/search-providers.test.mjs:173.
 	assert.equal(output.captured.redirect, "manual");
 	assert.equal(output.captured.headers.authorization, "Bearer bd-test-key");
 	assert.equal(output.captured.headers["content-type"], "application/json");

@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Cleaned the unreleased XCrawl provider docs, parser shape, provider availability types, and focused tests.
 
+### Removed
+
+- Removed the Gemini Web browser-cookie login path: the `gemini-web.ts` client, the `/google-account` command, the global `browserCookies` config, and the Gemini Web fallbacks in URL context, YouTube, and local video extraction. Gemini API, URL Context, and Files API extraction are unchanged. Chromium cookie extraction and `allowBrowserCookies` remain for `fetch_content` auth profiles.
+
 ## [0.25.0] - 2026-08-25
 
 ### Highlights

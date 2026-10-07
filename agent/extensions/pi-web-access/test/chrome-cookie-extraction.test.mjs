@@ -97,7 +97,7 @@ function writeFailPasswordCommand(bin, countPath, targetPlatform = process.platf
 }
 
 function runCookies(home, env, options = "{ requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }", platformOverride) {
-	return runCookieScript(env, `const r = await m.getGoogleCookies(${options}); console.log(JSON.stringify({ result: r, diagnostic: m.getLastGoogleCookieDiagnostic(), details: m.getLastGoogleCookieDiagnosticDetails() }));`, platformOverride);
+	return runCookieScript(env, `const r = await m.getBrowserCookiesForHosts({ hosts: ['gemini.google.com', 'accounts.google.com', 'www.google.com'], ...${options} }); console.log(JSON.stringify({ result: r, diagnostic: m.getLastBrowserCookieDiagnostic(), details: m.getLastBrowserCookieDiagnosticDetails() }));`, platformOverride);
 }
 
 function runCookieScript(env, body, platformOverride) {
@@ -276,7 +276,7 @@ test("required-cookie preflight avoids password invocation for unrelated profile
 	Object.assign(env, writePasswordCommand(bin, countPath));
 	const result = runCookies(home, env);
 	assert.equal(result.result, null);
-	assert.equal(result.diagnostic.includes("required Gemini cookies"), true);
+	assert.equal(result.diagnostic.includes("required browser cookies"), true);
 	assert.equal(result.details.attempts.some((attempt) => attempt.browser === "Chrome" && attempt.profile === "Profile 1" && attempt.status === "missing-required-cookies"), true);
 	assert.equal(existsSync(countPath), false);
 	rmSync(home, { recursive: true, force: true });
@@ -336,7 +336,7 @@ test("browser encryption password is cached within a process", (t) => {
 	const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module"], {
 		encoding: "utf8",
 		env,
-		input: `const { getGoogleCookies } = await import(${JSON.stringify(moduleUrl)}); await getGoogleCookies({ profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }); await getGoogleCookies({ profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] });`,
+		input: `const { getBrowserCookiesForHosts } = await import(${JSON.stringify(moduleUrl)}); const options = { hosts: ['gemini.google.com', 'accounts.google.com', 'www.google.com'], profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }; await getBrowserCookiesForHosts(options); await getBrowserCookiesForHosts(options);`,
 	});
 	assert.equal(child.status, 0, child.stderr);
 	assert.equal(readFileSync(countPath, "utf8"), "1");
@@ -358,7 +358,7 @@ test("failed password lookups are retried instead of cached", (t) => {
 	const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module"], {
 		encoding: "utf8",
 		env,
-		input: `const { getGoogleCookies } = await import(${JSON.stringify(moduleUrl)}); const options = { profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }; const first = await getGoogleCookies(options); const second = await getGoogleCookies(options); console.log(JSON.stringify({ first, second }));`,
+		input: `const { getBrowserCookiesForHosts } = await import(${JSON.stringify(moduleUrl)}); const options = { hosts: ['gemini.google.com', 'accounts.google.com', 'www.google.com'], profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }; const first = await getBrowserCookiesForHosts(options); const second = await getBrowserCookiesForHosts(options); console.log(JSON.stringify({ first, second }));`,
 	});
 	assert.equal(child.status, 0, child.stderr);
 	const result = JSON.parse(child.stdout);
