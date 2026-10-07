@@ -8,7 +8,7 @@
   },
   "hideThinkingBlock": false,
   "collapseChangelog": true,
-  "quietStartup": false,
+  "quietStartup": true,
   "defaultProjectTrust": "always",
   "tuiMode": "fullscreen",
   "fullscreenScrollbar": "always",
