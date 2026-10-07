@@ -11,15 +11,16 @@
  * lists every functional extension slash command, joined by `·`; settings
  * menus (modelconf, skillsconf) and utility commands (llama, todos, subagents)
  * are omitted. Press Ctrl-O (the same key that
- * expands tool output) to expand the header and list the loaded context files,
- * every installed skill, and every extension inline — a blank line above each
- * group, and long lists wrapped to the terminal width:
+ * expands tool output) to expand the header and list the loaded context files
+ * (the AGENTS/CLAUDE files, plus the memory extension's global and project
+ * MEMORY.md / USER.md stores), every installed skill, and every extension inline
+ * — a blank line above each group, and long lists wrapped to the terminal width:
  *
  *    pi v1.0.4 kiln v0.4.0
  *    skills 23 extensions 14
  *
  *    [ctx]
- *    ~/.pi/agent/AGENTS.md, ~/AGENTS.md
+ *    ~/.pi/agent/AGENTS.md, ~/AGENTS.md, ~/.pi/agent/memories/MEMORY.md
  *
  *    [skills]
  *    alpha, beta
@@ -57,6 +58,7 @@ const BRANCH = "main";
 const TIMEOUT_MS = 5000;
 const UPDATE_COMMAND = "npx @asterxsk/kiln@latest";
 const CONTEXT_FILENAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+const MEMORY_FILENAMES = ["MEMORY.md", "USER.md"];
 const SETTINGS_COMMANDS = new Set(["modelconf", "skillsconf"]);
 const HEADER_HIDDEN_COMMANDS = new Set(["llama", "todos", "subagents"]);
 const PI_COLOR = parseColor("#5FD7D7");
@@ -125,7 +127,31 @@ function installedNames(kind: "skills" | "extensions"): string[] {
 	}
 }
 
-/** Context files pi loads: global first, then ancestors from root down to cwd. */
+/** Nearest ancestor of cwd containing a .git entry, falling back to cwd — matches the memory extension. */
+function projectRoot(cwd: string): string {
+	let dir = cwd;
+	while (true) {
+		if (existsSync(join(dir, ".git"))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) return cwd;
+		dir = parent;
+	}
+}
+
+/** Memory files the memory extension injects: global dir, then the project dir. */
+function memoryFiles(cwd: string): string[] {
+	const dirs = [join(agentDir(), "memories"), join(projectRoot(cwd), ".pi", "memories")];
+	const files: string[] = [];
+	for (const dir of dirs) {
+		for (const name of MEMORY_FILENAMES) {
+			const file = join(dir, name);
+			if (existsSync(file)) files.push(file);
+		}
+	}
+	return files;
+}
+
+/** Context files pi loads: global first, then ancestors from root down to cwd, then memory. */
 function contextFiles(cwd: string): string[] {
 	const find = (dir: string): string | undefined =>
 		CONTEXT_FILENAMES.map((name) => join(dir, name)).find((file) => existsSync(file));
@@ -149,6 +175,12 @@ function contextFiles(cwd: string): string[] {
 		dir = parent;
 	}
 	files.push(...ancestors);
+	for (const file of memoryFiles(cwd)) {
+		if (!seen.has(file)) {
+			files.push(file);
+			seen.add(file);
+		}
+	}
 	return files;
 }
 

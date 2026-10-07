@@ -28,7 +28,7 @@ A minimal kiln header for pi, and a nudge when your install is behind GitHub.
    /btw · /destructive · /goal · /kiln-update · /ps · /search · /trim
 
    [ctx]
-   ~/.pi/agent/AGENTS.md, ~/AGENTS.md
+   ~/.pi/agent/AGENTS.md, ~/AGENTS.md, ~/.pi/agent/memories/MEMORY.md
 
    [skills]
    alpha, beta
@@ -36,6 +36,11 @@ A minimal kiln header for pi, and a nudge when your install is behind GitHub.
    [extensions]
    extA, extB
   ```
+
+- The `[ctx]` group lists every file pi loads into context: the global
+  `AGENTS.md`, whatever `AGENTS.md`/`CLAUDE.md` sits between the repo root and
+  the cwd, and the memory extension's stores — `~/.pi/agent/memories/MEMORY.md`
+  and `USER.md`, plus `<projectRoot>/.pi/memories/*.md` when the project has any.
 
 - When `~/.pi/agent/version.txt` is behind `agent/version.txt` on `main`, the
   header also shows:
