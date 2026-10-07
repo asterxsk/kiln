@@ -4,10 +4,14 @@
  * Intercepts `bash` / `powershell` tool calls and prompts:
  *
  *   Do you want to allow pi to run:
- *   {full-command}
+ *   {destructive segment(s) only}
  *
  *   1. Allow
  *   2. Deny
+ *
+ * Only the destructive segment(s) of a compound command are shown, so a long
+ * multi-line shell script collapses to just the `rm`/`git` line that triggered
+ * the guard.
  *
  * Anything else (including Deny, or dismissing with Esc) blocks the command.
  * In non-interactive mode (no UI) deletion commands are blocked by default.
@@ -41,6 +45,19 @@ function isDestructiveGit(rest: string): boolean {
   if (/^clean\b/.test(args) && /(^|\s)-[a-zA-Z]*f/.test(args)) return true;
   if (/^worktree\b\s+remove\b/.test(args)) return true;
   if (/^notes\b.*\b(remove|prune)\b/.test(args)) return true;
+  if (/^reset\b/.test(args) && /(^|\s)--hard\b/.test(args)) return true;
+  if (/^restore\b/.test(args)) {
+    // `--staged` alone only touches the index; anything else rewrites the worktree.
+    const stagedOnly =
+      /(^|\s)(--staged|-S)(\s|$)/.test(args) && !/(^|\s)(--worktree|-W)(\s|$)/.test(args);
+    return !stagedOnly;
+  }
+  if (/^checkout\b/.test(args)) {
+    if (/(^|\s)(-f|--force)\b/.test(args)) return true;
+    if (/(^|\s)--(\s|$)/.test(args)) return true; // `git checkout -- <path>`
+    if (/(^|\s)\.(\s|$)/.test(args)) return true; // `git checkout .`
+    return false;
+  }
   return false;
 }
 
@@ -57,8 +74,17 @@ function isDestructiveSegment(segment: string): boolean {
   return false;
 }
 
+const SEGMENT_SPLIT = /&&|\|\||;|\||\n/;
+
+export function findDestructiveSegments(command: string): string[] {
+  return command
+    .split(SEGMENT_SPLIT)
+    .filter(isDestructiveSegment)
+    .map((segment) => segment.trim());
+}
+
 export function isDestructiveCommand(command: string): boolean {
-  return command.split(/&&|\|\||;|\||\n/).some(isDestructiveSegment);
+  return findDestructiveSegments(command).length > 0;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -83,22 +109,27 @@ export default function (pi: ExtensionAPI) {
     }
 
     const command = event.input.command as string | undefined;
-    if (!command || !isDestructiveCommand(command)) return undefined;
+    if (!command) return undefined;
+
+    const destructive = findDestructiveSegments(command);
+    if (destructive.length === 0) return undefined;
+
+    const shown = destructive.join("\n");
 
     if (!ctx.hasUI) {
       return {
         block: true,
-        reason: `Blocked deletion command (no UI to confirm): ${command}`,
+        reason: `Blocked deletion command (no UI to confirm): ${shown}`,
       };
     }
 
     const choice = await ctx.ui.select(
-      `Do you want to allow pi to run:\n${command}`,
+      `Do you want to allow pi to run:\n${shown}`,
       ["1. Allow", "2. Deny"],
     );
 
     if (choice !== "1. Allow") {
-      return { block: true, reason: `User denied deletion command: ${command}` };
+      return { block: true, reason: `User denied deletion command: ${shown}` };
     }
 
     return undefined;
