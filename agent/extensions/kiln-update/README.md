@@ -7,16 +7,17 @@ A minimal kiln header for pi, and a nudge when your install is behind GitHub.
   ```
    pi vX kiln vY
    skills N extensions N
-   /btw · /destructive · /goal · /kiln-update · /ps · /search · /todos · /trim
-   Press Ctrl-O to view more
+   /btw · /destructive · /goal · /kiln-update · /ps · /search · /trim
+   press ctrl-o to view more
   ```
 
   `pi` is cyan, `kiln` is a light red, and the versions and counts are gray.
   Every header line is indented one space.
 
 - Below the counts, a wrapped line lists every functional extension slash
-  command, separated by `·`. Settings menus (`modelconf`, `skillsconf`) are
-  omitted, and the list wraps to the terminal width.
+  command, separated by `·`. Settings menus (`modelconf`, `skillsconf`) and
+  utility commands (`llama`, `todos`, `subagents`) are omitted, and the list
+  wraps to the terminal width.
 
 - The catalog is hidden by default. Press `ctrl+o` to expand it. A blank line
   sits above each group, and long lists wrap to the terminal width:
@@ -24,7 +25,7 @@ A minimal kiln header for pi, and a nudge when your install is behind GitHub.
   ```
    pi vX kiln vY
    skills N extensions N
-   /btw · /destructive · /goal · /kiln-update · /ps · /search · /todos · /trim
+   /btw · /destructive · /goal · /kiln-update · /ps · /search · /trim
 
    [ctx]
    ~/.pi/agent/AGENTS.md, ~/AGENTS.md

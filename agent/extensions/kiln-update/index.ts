@@ -5,11 +5,12 @@
  *
  *    pi v1.0.4 kiln v0.4.0
  *    skills 23 extensions 14
- *    Press Ctrl-O to view more
+ *    press ctrl-o to view more
  *
  * Every header line is indented by one space. A wrapped line below the counts
  * lists every functional extension slash command, joined by `·`; settings
- * menus (modelconf, skillsconf) are omitted. Press Ctrl-O (the same key that
+ * menus (modelconf, skillsconf) and utility commands (llama, todos, subagents)
+ * are omitted. Press Ctrl-O (the same key that
  * expands tool output) to expand the header and list the loaded context files,
  * every installed skill, and every extension inline — a blank line above each
  * group, and long lists wrapped to the terminal width:
@@ -57,6 +58,7 @@ const TIMEOUT_MS = 5000;
 const UPDATE_COMMAND = "npx @asterxsk/kiln@latest";
 const CONTEXT_FILENAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 const SETTINGS_COMMANDS = new Set(["modelconf", "skillsconf"]);
+const HEADER_HIDDEN_COMMANDS = new Set(["llama", "todos", "subagents"]);
 const PI_COLOR = parseColor("#5FD7D7");
 const KILN_COLOR = parseColor("#FF8A80");
 const GREY_COLOR = parseColor("#6E7681");
@@ -191,7 +193,8 @@ function headerLines(state: HeaderState, theme: Theme, width: number): string[] 
 		group("[skills]", state.skills);
 		group("[extensions]", state.extensions);
 	} else {
-		add(grey("Press Ctrl-O to view more"));
+		add(grey("press ctrl-o to view more"));
+		lines.push("");
 	}
 	if (state.update) {
 		lines.push("");
@@ -224,7 +227,7 @@ export default function (pi: ExtensionAPI) {
 		state.extensions = installedNames("extensions");
 		state.commands = pi
 			.getCommands()
-			.filter((command) => command.source === "extension" && !SETTINGS_COMMANDS.has(command.name))
+			.filter((command) => command.source === "extension" && !SETTINGS_COMMANDS.has(command.name) && !HEADER_HIDDEN_COMMANDS.has(command.name))
 			.map((command) => `/${command.name}`)
 			.sort((a, b) => a.localeCompare(b));
 	};
