@@ -9,7 +9,7 @@
   <a href="#quick-start"><img src="https://badges.ws/badge/PLATFORM-MACOS_%7C_LINUX_%7C_WINDOWS-8b5cf6?style=for-the-badge&label_color=101418" alt="platform" /></a>
 </p>
 
-Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, twelve curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
+Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon of copy-paste archaeology. **kiln** fixes that: your whole agent setup — workflows, TUI, keybindings, fifteen curated extensions — lives in one versioned repo with an idempotent installer. Run it on day one, re-run it on day one hundred; your state survives either way.
 
 ---
 
@@ -18,7 +18,7 @@ Dotfiles rot. Extensions drift out of sync. A fresh machine means an afternoon o
 One line, then you're done:
 
 ```bash
-npx @asterxsk/kiln --yes
+npx @asterxsk/kiln@latest
 ```
 
 What the installer does:
@@ -30,15 +30,9 @@ What the installer does:
 
 **Safe to re-run.** It backs up the extensions and config files it replaces, leaves anything you've edited in `settings.json` / `compact-tools.json` alone, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
 
-### Publishing the npm package
+### Manual install
 
-```bash
-npm login                    # once, as asterxsk
-npm pack --dry-run           # review the file list — payload mirrors git, secrets must never appear
-npm publish --access public  # ships bin/kiln.js + agent payload
-```
-
-Prefer to do it by hand?
+Prefer to wire it up yourself, without the installer:
 
 ```bash
 git clone https://github.com/asterxsk/kiln.git
@@ -51,49 +45,51 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 
 ## Features
 
-- **Curated extensions** — 12 self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
+- **Curated extensions** — fifteen self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
 - **Safe installer** — public HTTPS clone, atomic overwrites, narrow backups of only the files it replaces. Your config is never collateral damage.
 - **Compact-first UX** — `pi-compact-tools` (Claude / Codex / Compact tool rows), `theme: github-dark-pro`, fullscreen TUI, high thinking by default. Built for long sessions.
+- **Versioned memory** — the global cross-session memory stores ride along with the repo (see [Memory](#memory)).
 - **Secret-free by construction** — `auth.json`, `sessions/`, `trust.json`, `models-store.json`, `bin/`, and `themes/.pi` are `.gitignore`'d. The repo holds config, never credentials.
 - **Cross-platform** — one Node installer for macOS, Linux, and Windows.
 
-### Extensions
+---
+
+## Extensions
 
 | Extension | What it does |
 |-----------|--------------|
-| `modelconf` | Per-provider model browser, fuzzy filter, bulk glob, `enabledModels` persistence |
-| `todo` | Agent todo list with overlay |
-| `ask-user` | Structured user prompts |
-| `background-terminals` | Long-lived terminal manager |
-| `subagents` | Subagent orchestration (Claude/Codex/pi) |
-| `file-search` | First-class `fd`/`rg` tools with binary auto-install |
-| `pi-web-access` | Web search & fetch |
-| `goal` | Goal-driven execution loop |
-| `trim-context` | Context compaction |
-| `status line` | Status line renderer |
-| `memory` | Curated cross-session memory — global + project `MEMORY.md` / `USER.md`, injected into the system prompt |
+| `ask-user` | The model asks a single multiple-choice question in a popup (arrow/number keys, inline "write my own answer" editor) |
+| `background-terminals` | Start and manage long-running shell processes the model can read from, write to, and stop |
+| `destructive` | Intercepts destructive `bash` / `powershell` calls (e.g. deletions) and asks first |
+| `file-search` | First-class `fd` / `rg` tools, with automatic binary install |
+| `goal` | Keeps the agent working until a stated goal is achieved |
+| `kiln-update` | Slim kiln header for pi, plus a nudge when your install is behind GitHub |
+| `memory` | Bounded cross-session memory — global + project `MEMORY.md` / `USER.md`, injected into the system prompt |
+| `modelconf` | Per-provider model visibility manager — fuzzy filter, bulk glob, `enabledModels` persistence |
+| `pi-web-access` | Web search and page fetch |
 | `shared` | Cross-extension utilities (timeouts, sessions, context) |
+| `skillsconf` | Per-skill visibility manager, with named packages for mass enable/disable |
+| `statusline` | Custom status line / footer renderer |
+| `subagents` | Subagent orchestration on one of three backends (Claude Code, Codex, pi) |
+| `todo` | Agent todo list with a persistent overlay |
+| `trim-context` | Aggressive context compaction (crush / amp / lsp style) so long sessions keep going |
 
 Each extension lives at `agent/extensions/{name}/index.ts` and installs independently.
 
 ---
 
-## Repository layout
+## Memory
 
-```
-.
-├── README.md                    # ← you are here (GitHub-visible)
-├── .gitignore
-└── agent/
-    ├── AGENTS.md                # behavioral guidelines (merged into every session)
-    ├── README.md                # pointer → ../README.md
-    ├── settings.json            # canonical defaults (seeded once, then yours)
-    ├── compact-tools.json       # tool-row style (defaults to codex)
-    ├── keybindings.json         # TUI keybindings
-    └── extensions/              # self-contained pi extensions
-```
+The `memory` extension gives the agent bounded, curated cross-session memory (ported from the Hermes Agent framework). It has two axes:
 
-Tracked paths only: `agent/extensions`, `agent/settings.json`, `agent/keybindings.json`, `agent/compact-tools.json`, `agent/AGENTS.md`, `README.md`. Everything else is local-only.
+- **scope** — `global` (shared across projects) or `project` (specific to the working directory)
+- **target** — `memory` (the agent's own notes) or `user` (your profile)
+
+Each pair is one markdown file — `MEMORY.md` / `USER.md` — under `~/.pi/agent/memories/` for global scope and `<project>/.pi/memories/` for project scope. Every store has a hard character budget and never auto-compacts: a write that would overflow is rejected, so the agent makes room itself. The rendered block is injected into the system prompt at session start.
+
+When a turn finishes having done real work, the extension also gives the **same** agent one extra request to review the conversation and save anything durable through the `memory` tool — memory accumulates without you asking. A pure Q&A turn is skipped, and each turn reflects at most once, so it can't loop. Toggle it with `/memory-auto on|off`.
+
+**Global stores are tracked in this repo** at `agent/memories/{MEMORY.md,USER.md}`, so git gives them history and a home. Project-scoped stores stay with their project. The installer copies extensions and config, not your notes — restore those two files from the repo when you want them on a new machine.
 
 ---
 
@@ -122,16 +118,37 @@ Your live copy at `~/.pi/agent/settings.json` is yours — pick your own models,
 |------|--------|
 | `enter` | submit |
 | `shift+enter` | new line |
-| `ctrl+enter` | follow-up message |
+| `alt+f` | follow-up message |
 | `alt+s` | save models |
 
 See `agent/keybindings.json` for the full map.
 
----
-
-## AGENTS.md
+### AGENTS.md
 
 The house rules, merged into every session: *think before coding*, *simplicity first*, *surgical changes*, *goal-driven execution*. Copied to `~/.pi/agent/AGENTS.md` on install — read it before sending the agent off to build things.
+
+---
+
+## Repository layout
+
+```
+.
+├── README.md               # ← you are here (GitHub-visible)
+├── bin/kiln.js             # the installer (`npx @asterxsk/kiln`)
+├── package.json
+├── LICENSE
+└── agent/                  # → ~/.pi/agent
+    ├── AGENTS.md           # behavioral guidelines (merged into every session)
+    ├── README.md           # pointer → ../README.md
+    ├── settings.json       # canonical defaults (seeded once, then yours)
+    ├── compact-tools.json  # tool-row style (defaults to codex)
+    ├── keybindings.json    # TUI keybindings
+    ├── version.txt         # install version (drives kiln-update)
+    ├── memories/           # global memory stores (MEMORY.md, USER.md)
+    └── extensions/         # self-contained pi extensions
+```
+
+Only `agent/extensions`, `agent/memories`, the `agent/*.md` / `agent/*.json` config, `agent/version.txt`, `bin/kiln.js`, and the root docs are tracked. Everything else — secrets, sessions, caches, install scratch — stays local.
 
 ---
 
