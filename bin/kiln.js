@@ -15,11 +15,11 @@
 // Only one timestamped backup (<target>.bak.*) is kept; the clone temp dir
 // under ~/.pi/tmp/kiln-* is always removed.
 //
-// Safe to re-run. Extensions are refreshed; agent config (AGENTS.md,
-// keybindings.json, settings.json, compact-tools.json) is seeded on first
-// install only — once a file exists, kiln leaves it alone. version.txt is the
-// install marker kiln-update reads, so it is written every run. Per-user state
-// (taste.md, auth.json, sessions, etc.) is preserved.
+// Safe to re-run. Extensions and keybindings.json are refreshed every run;
+// other agent config (AGENTS.md, settings.json, compact-tools.json) is seeded
+// on first install only — once a file exists, kiln leaves it alone. version.txt
+// is the install marker kiln-update reads, so it is written every run. Per-user
+// state (taste.md, auth.json, sessions, etc.) is preserved.
 "use strict";
 
 const { spawn, spawnSync } = require("node:child_process");
@@ -89,68 +89,20 @@ const C = isTTY
   : { reset: "", bold: "", dim: "", green: "", yellow: "", red: "", cyan: "", gray: "" };
 const line = (s) => process.stdout.write(s + "\n");
 const log = (s) => { try { fs.appendFileSync(tmpLog, s + "\n"); } catch {} };
-// Mid-run output: plain lines when piped, swallowed (→ log + summary) when live.
-function detail(s) { try { log(String(s).replace(/\x1b\[[0-9;]*m/g, "")); } catch {} if (!isTTY) line(s); }
-
-// ── forge art + live status ─────────────────────────────────────────────
-const ART = [
-  "     █▌  █▌",
-  "  ██████████████",
-  "     ██    ██",
-  "     ██    ██",
-  "     ██    ██",
-  "     ██    ██ ",
-];
-// Phase 0 = ember (dim), phase 1 = stoked (bright). Non-TTY → plain art.
-function artLines(phase) {
-  if (!isTTY) return ART.slice();
-  const m = phase ? 1 : 2; // bold vs dim
-  const cream = `\x1b[${m};38;5;230m`, orange = `\x1b[${m};38;5;208m`, brown = `\x1b[${m};38;5;94m`, R = "\x1b[0m";
-  return [
-    `     ${cream}█▌${R}  ${cream}█▌${R}`,
-    `  ${orange}██████████████${R}`,
-    `     ${orange}██${R}    ${orange}██${R}`,
-    `     ${orange}██${R}    ${orange}██${R}`,
-    `     ${orange}██${R}    ${orange}██${R}`,
-    `     ${brown}██    ██${R} `,
-  ];
-}
-const SPIN = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠰", "⠠", "⠦", "⠧", "⠇", "⠏"];
-let liveLabel = "", liveTimer = null, liveTickN = 0;
-function liveDraw() {
-  if (!isTTY) return;
-  const rows = [...artLines(liveTickN % 10 < 5 ? 0 : 1), ` ${C.yellow}${SPIN[liveTickN % SPIN.length]}${C.reset} ${C.dim}${liveLabel}${C.reset}`];
-  process.stdout.write("\x1b[7A");
-  for (const r of rows) process.stdout.write(`\r\x1b[K${r}\n`);
-}
-function liveStart() {
-  if (!isTTY) return;
-  process.stdout.write("\n".repeat(7));
-  liveTickN = 0;
-  liveDraw();
-  liveTimer = setInterval(() => { liveTickN++; liveDraw(); }, 100);
-}
-function liveSet(label) { liveLabel = label; }
-function liveStop() {
-  if (!isTTY) return;
-  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
-  liveTickN = 5; // stoked final frame
-  liveDraw();
-}
+// Progress output: always printed, and mirrored to the log.
+function detail(s) { try { log(String(s).replace(/\x1b\[[0-9;]*m/g, "")); } catch {} line(s); }
 
 function title() {
   line("");
   line(`  ${C.bold}◆ Pi Setup${C.reset}`);
   line(`  ${C.dim}custom agent config  ·  pi + compact-tools + extensions${C.reset}`);
-  if (!isTTY) for (const r of artLines(0)) line(`  ${r}`);
   line("");
 }
 
-// Run a command: the live status line shows it on TTY, plain lines when piped. Output always → log.
+// Run a command: the label is printed as progress; output always → log.
 function runStep(step, label, cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    liveSet(`[${step}] ${label}`);
-    if (!isTTY) line(`  · ${label}`);
+    detail(`  · [${step}] ${label}`);
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], shell: false, ...opts });
     child.stdout.on("data", (d) => log(d.toString().trimEnd()));
     child.stderr.on("data", (d) => log(d.toString().trimEnd()));
@@ -191,10 +143,13 @@ function piStep(label, args) {
   if (process.platform === "win32") return runStep("pkg", label, "pi " + args.map(q).join(" "), [], { shell: true });
   return runStep("pkg", label, "pi", args);
 }
+// The pi shim is a .cmd on Windows, so it must go through the shell (piOut) —
+// spawning it directly returns ENOENT and makes kiln think pi is not installed.
+function piVersion() { return piOut(["--version"]).replace(/^[vV]/, "").trim(); }
 // pi installs via its official script — curl on Unix, irm on Windows. Never npm.
 function piInstallStep(step, label) {
   const cmd = process.platform === "win32"
-    ? 'powershell -NoProfile -Command "irm https://pi.dev/install.ps1 | iex"'
+    ? 'powershell -NoProfile -c "irm https://pi.dev/install.ps1 | iex"'
     : "curl -fsSL https://pi.dev/install.sh | sh";
   return runStep(step, label, cmd, [], { shell: true });
 }
@@ -277,7 +232,6 @@ function resolveSourceRoot(args) {
   fs.mkdirSync(base, { recursive: true });
   const tmp = path.join(base, "kiln-" + crypto.randomBytes(4).toString("hex"));
   fs.mkdirSync(tmp, { recursive: true });
-  liveSet(`cloning repo…`);
   detail(`  · cloning ${args.repo} (branch ${args.branch})`);
   const r = spawnSync("git", ["clone", "--depth", "1", "--branch", args.branch, args.repo, tmp],
     { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", GIT_ASKPASS: "echo" } });
@@ -316,14 +270,13 @@ async function main() {
 
   // git is required unless --local (every install clones GitHub latest)
   if (!have("git") && !args.local) { line(`${C.red}  ✖ git not found — kiln installs from GitHub (or re-run with --local)${C.reset}`); process.exit(1); }
-  liveStart();
 
   // ── [1/4] pi ──
   if (args.skipPi) {
     detail(`  · Install pi — skipped`);
     note("skipped", "pi");
   } else if (have("pi")) {
-    const installed = globalPkgVersion(PI_PACKAGE) || cmdOut("pi", ["--version"]).replace(/^[vV]/, "").trim();
+    const installed = piVersion() || globalPkgVersion(PI_PACKAGE);
     const latest = latestPkgVersion(PI_PACKAGE);
     if (installed && latest && installed === latest) {
       detail(`  · pi ${installed} — already installed, skipping`);
@@ -335,7 +288,7 @@ async function main() {
       const label = installed ? `updating pi ${installed} → ${latest || "latest"}` : `installing pi`;
       const code = await piInstallStep("1/4", label);
       if (code === 0) {
-        detail(`  · ${label} — ${cmdOut("pi", ["--version"]) || "?"}`);
+        detail(`  · ${label} — ${piVersion() || "?"}`);
         note(installed ? "updated" : "installed", "pi");
       } else {
         detail(`  ✖ ${label} failed (exit ${code}) — see log`);
@@ -411,11 +364,11 @@ async function main() {
     let copied = 0;
     const selfInstall = path.resolve(sourceRoot) === path.resolve(targetDir);
     if (selfInstall) detail(`  · source == target — skipping file copy (self-install)`);
-    // Agent config is seeded on first install only — once a file exists, kiln
-    // never overwrites it. version.txt is the marker kiln-update compares against
-    // GitHub, so it is refreshed every run.
-    const seedOnce = ["AGENTS.md", "keybindings.json"];
-    for (const f of [...seedOnce, "version.txt"]) {
+    // Most agent config is seeded on first install only — once a file exists,
+    // kiln never overwrites it. keybindings.json is always refreshed (kiln owns
+    // the keymap); version.txt is the marker kiln-update compares against GitHub.
+    const seedOnce = ["AGENTS.md"];
+    for (const f of [...seedOnce, "keybindings.json", "version.txt"]) {
       const src = path.join(sourceRoot, f);
       if (!fs.existsSync(src)) continue;
       const dst = path.join(targetDir, f);
@@ -569,7 +522,6 @@ async function main() {
   }
 
   // ── summary ──
-  liveStop();
   const secs = Math.round((Date.now() - startTime) / 1000);
   const elapsed = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
   line("");

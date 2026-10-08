@@ -25,10 +25,10 @@ What the installer does:
 
 1. Installs or updates `pi` itself via the official script — `curl -fsSL https://pi.dev/install.sh | sh` on Linux/macOS, `powershell -c "irm https://pi.dev/install.ps1 | iex"` on Windows (never npm)
 2. Installs the `pi-context-usage` and `pi-compact-tools` packages
-3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions are refreshed every run; agent config (`AGENTS.md`, `keybindings.json`, `settings.json`, `compact-tools.json`) is seeded on first install only and then never overwritten, while `taste/` and secrets are left alone
+3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and `keybindings.json` are refreshed every run; the rest of the agent config (`AGENTS.md`, `settings.json`, `compact-tools.json`) is seeded on first install only and then never overwritten, while `taste/` and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
-**Safe to re-run.** Extensions are refreshed; the agent config files (`AGENTS.md`, `keybindings.json`, `settings.json`, `compact-tools.json`) are seeded on first install only and then left alone. It backs up what it replaces and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
+**Safe to re-run.** Extensions and `keybindings.json` are refreshed; the other agent config files (`AGENTS.md`, `settings.json`, `compact-tools.json`) are seeded on first install only and then left alone. It backs up what it replaces and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
 
 ### Manual install
 
@@ -121,7 +121,7 @@ Your live copy at `~/.pi/agent/settings.json` is yours — pick your own models,
 | `alt+f` | follow-up message |
 | `alt+s` | save models |
 
-See `agent/keybindings.json` for the full map.
+See `agent/keybindings.json` for the full map. The installer refreshes this file on every run, so edit the keymap in the repo rather than in `~/.pi/agent`.
 
 ### AGENTS.md
 
