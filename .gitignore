@@ -1,6 +1,6 @@
 # ── Pi config repo — publish-safe .gitignore ──────────────────────────────
 # Only these are tracked:
-#   README.md, agent/AGENTS.md, agent/README.md, agent/settings.json
+#   README.md, agent/AGENTS.md, agent/settings.json
 #   (canonical defaults — seeded once, never overwritten after user edits),
 #   agent/compact-tools.json, agent/keybindings.json, agent/install.sh,
 #   agent/install.ps1, agent/extensions, agent/version.txt

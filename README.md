@@ -25,10 +25,10 @@ What the installer does:
 
 1. Installs or updates `pi` itself via the official script — `curl -fsSL https://pi.dev/install.sh | sh` on Linux/macOS, `powershell -c "irm https://pi.dev/install.ps1 | iex"` on Windows (never npm)
 2. Installs the `pi-context-usage` and `pi-compact-tools` packages
-3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions and config get overwritten; `settings.json` and `compact-tools.json` are seeded from the repo's defaults (and refreshed while still untouched), while `taste/` and secrets are left alone
+3. Clones `asterxsk/kiln` over plain HTTPS (no credential prompts, ever) and copies the managed files into `~/.pi/agent` — extensions are refreshed every run; agent config (`AGENTS.md`, `keybindings.json`, `settings.json`, `compact-tools.json`) is seeded on first install only and then never overwritten, while `taste/` and secrets are left alone
 4. Runs each extension's `install.sh` / `install.ps1` (`npm ci`)
 
-**Safe to re-run.** It backs up the extensions and config files it replaces, leaves anything you've edited in `settings.json` / `compact-tools.json` alone, and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
+**Safe to re-run.** Extensions are refreshed; the agent config files (`AGENTS.md`, `keybindings.json`, `settings.json`, `compact-tools.json`) are seeded on first install only and then left alone. It backs up what it replaces and accepts `--help` options (`--repo`, `--branch`, `--target`, `--local`, `--skip-pi`, `--skip-packages`, `--yes`) when you want control. The installer always clones the repo over plain HTTPS — no credential prompts, ever — so every install starts from the latest GitHub code (`--repo`/`--branch` for forks, `--local` for a local checkout).
 
 ### Manual install
 
@@ -95,7 +95,7 @@ Global stores live at `~/.pi/agent/memories/` and project stores at `<project>/.
 
 ## Configuration
 
-`agent/settings.json` is the source of truth — a curated baseline with machine- and user-specific fields (default model/provider, hidden/enabled models, device id, disabled skills) stripped out. First install seeds it; after that the installer refreshes it only while it still matches the baseline exactly, so any edit you make is respected. The flavor in one glance:
+`agent/settings.json` is the source of truth — a curated baseline with machine- and user-specific fields (default model/provider, hidden/enabled models, device id, disabled skills) stripped out. The installer seeds it on first install only; after that it is never touched, so your edits always stick. The flavor in one glance:
 
 ```json
 {
@@ -110,7 +110,7 @@ Your live copy at `~/.pi/agent/settings.json` is yours — pick your own models,
 
 ### Tool rows
 
-`agent/compact-tools.json` seeds the `pi-compact-tools` style to `codex` on install. If you switch styles with `/compact-tools`, the installer keeps your choice on re-runs — it only (re)applies the default while the style is unchanged.
+`agent/compact-tools.json` seeds the `pi-compact-tools` style to `codex` on first install only. After that it is never touched, so whatever you set with `/compact-tools` stays.
 
 ### Keybindings
 
@@ -139,7 +139,6 @@ The house rules, merged into every session: *think before coding*, *simplicity f
 ├── LICENSE
 └── agent/                  # → ~/.pi/agent
     ├── AGENTS.md           # behavioral guidelines (merged into every session)
-    ├── README.md           # pointer → ../README.md
     ├── settings.json       # canonical defaults (seeded once, then yours)
     ├── compact-tools.json  # tool-row style (defaults to codex)
     ├── keybindings.json    # TUI keybindings

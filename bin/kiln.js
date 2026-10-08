@@ -15,10 +15,11 @@
 // Only one timestamped backup (<target>.bak.*) is kept; the clone temp dir
 // under ~/.pi/tmp/kiln-* is always removed.
 //
-// Safe to re-run. Managed files are force-overwritten; per-user state
-// (taste.md, auth.json, sessions, etc.) is preserved. settings.json and
-// compact-tools.json are seeded from repo defaults and refreshed while still
-// untouched — once you edit them, kiln leaves them alone.
+// Safe to re-run. Extensions are refreshed; agent config (AGENTS.md,
+// keybindings.json, settings.json, compact-tools.json) is seeded on first
+// install only — once a file exists, kiln leaves it alone. version.txt is the
+// install marker kiln-update reads, so it is written every run. Per-user state
+// (taste.md, auth.json, sessions, etc.) is preserved.
 "use strict";
 
 const { spawn, spawnSync } = require("node:child_process");
@@ -215,19 +216,6 @@ function latestPkgVersion(name) {
   const v = (out || "").split(/\s+/)[0].trim();
   return /^[0-9][0-9A-Za-z.+-]*$/.test(v) ? v : "";
 }
-// Structural equality that ignores object key order.
-function deepEqual(a, b) {
-  if (a === b) return true;
-  if (typeof a !== typeof b || a === null || b === null) return false;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
-  }
-  if (typeof a === "object") {
-    const ka = Object.keys(a), kb = Object.keys(b);
-    return ka.length === kb.length && ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && deepEqual(a[k], b[k]));
-  }
-  return false;
-}
 // Keep only the newest sibling backup (<target>.bak.*); delete the rest.
 function pruneBackups(targetDir, keep) {
   try {
@@ -405,7 +393,7 @@ async function main() {
       bak = `${targetDir}.bak.${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
       detail(`  · backup ${targetDir}/extensions → ${bak}`);
       fs.mkdirSync(bak, { recursive: true });
-      for (const f of ["AGENTS.md", "keybindings.json", "README.md", "version.txt"]) {
+      for (const f of ["AGENTS.md", "keybindings.json", "version.txt"]) {
         const s = path.join(targetDir, f);
         if (fs.existsSync(s)) try { fs.copyFileSync(s, path.join(bak, f)); } catch {}
       }
@@ -423,29 +411,35 @@ async function main() {
     let copied = 0;
     const selfInstall = path.resolve(sourceRoot) === path.resolve(targetDir);
     if (selfInstall) detail(`  · source == target — skipping file copy (self-install)`);
-    for (const f of ["AGENTS.md", "keybindings.json", "README.md", "version.txt"]) {
-      if (!fs.existsSync(path.join(sourceRoot, f))) continue;
-      if (!selfInstall) fs.copyFileSync(path.join(sourceRoot, f), path.join(targetDir, f));
+    // Agent config is seeded on first install only — once a file exists, kiln
+    // never overwrites it. version.txt is the marker kiln-update compares against
+    // GitHub, so it is refreshed every run.
+    const seedOnce = ["AGENTS.md", "keybindings.json"];
+    for (const f of [...seedOnce, "version.txt"]) {
+      const src = path.join(sourceRoot, f);
+      if (!fs.existsSync(src)) continue;
+      const dst = path.join(targetDir, f);
+      if (seedOnce.includes(f) && fs.existsSync(dst)) {
+        detail(`  · kept existing ${f}`);
+        note("skipped", f);
+        continue;
+      }
+      if (!selfInstall) fs.copyFileSync(src, dst);
       copied++;
     }
-    // settings.json: seed kiln's defaults, refresh while untouched, never stomp
-    // user edits (any difference from the baseline counts as an edit).
+    // settings.json: seed kiln's defaults on first install only.
     const settingsPath = path.join(targetDir, "settings.json");
     const repoSettings = path.join(sourceRoot, "settings.json");
     if (fs.existsSync(repoSettings)) {
-      const baseline = JSON.parse(fs.readFileSync(repoSettings, "utf8"));
-      baseline.packages = [...new Set([...(baseline.packages || []), ...SETTINGS_PACKAGES])];
-      let current = null;
       if (fs.existsSync(settingsPath)) {
-        try { current = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch {}
-      }
-      if (current && !deepEqual(current, baseline)) {
         detail(`  · kept existing settings.json`);
         note("skipped", "settings.json");
       } else {
+        const baseline = JSON.parse(fs.readFileSync(repoSettings, "utf8"));
+        baseline.packages = [...new Set([...(baseline.packages || []), ...SETTINGS_PACKAGES])];
         fs.writeFileSync(settingsPath, JSON.stringify(baseline, null, 2) + "\n");
         detail(`  · settings.json — kiln defaults`);
-        note(current ? "updated" : "installed", "settings.json");
+        note("installed", "settings.json");
       }
     }
     for (const t of ["taste.md", "taste", "taste.json"]) {
@@ -458,30 +452,22 @@ async function main() {
       }
     }
 
-    // compact-tools tool-row style: seed kiln's default, but never overwrite a
-    // style the user switched to. Other keys they tuned are preserved either way.
+    // compact-tools tool-row style: seed kiln's default on first install only.
     const repoCompact = path.join(sourceRoot, "compact-tools.json");
     if (fs.existsSync(repoCompact)) {
       const compactPath = path.join(targetDir, "compact-tools.json");
-      let defaultStyle = "codex";
-      try {
-        const d = JSON.parse(fs.readFileSync(repoCompact, "utf8"));
-        if (d && typeof d.style === "string") defaultStyle = d.style;
-      } catch {}
-      let current = null;
       if (fs.existsSync(compactPath)) {
-        try {
-          const e = JSON.parse(fs.readFileSync(compactPath, "utf8"));
-          if (e && typeof e === "object" && !Array.isArray(e)) current = e;
-        } catch {}
-      }
-      if (current && typeof current.style === "string" && current.style !== defaultStyle) {
-        detail(`  · kept existing compact-tools.json (${current.style} style)`);
+        detail(`  · kept existing compact-tools.json`);
         note("skipped", "compact-tools.json");
       } else {
-        fs.writeFileSync(compactPath, JSON.stringify({ ...(current || {}), style: defaultStyle }, null, 2) + "\n");
+        let defaultStyle = "codex";
+        try {
+          const d = JSON.parse(fs.readFileSync(repoCompact, "utf8"));
+          if (d && typeof d.style === "string") defaultStyle = d.style;
+        } catch {}
+        fs.writeFileSync(compactPath, JSON.stringify({ style: defaultStyle }, null, 2) + "\n");
         detail(`  · compact-tools → ${defaultStyle} style`);
-        note(current ? "updated" : "installed", "compact-tools.json");
+        note("installed", "compact-tools.json");
       }
     }
 
