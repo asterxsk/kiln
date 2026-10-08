@@ -22,6 +22,9 @@ agent/taste/
 taste.md
 taste.json
 
+# personal cross-session memory — never tracked, never published
+agent/memories/
+
 # local-only runtime / scratch dirs
 .pi/
 tmp/
