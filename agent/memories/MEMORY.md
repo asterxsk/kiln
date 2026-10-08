@@ -1,1 +1,0 @@
-Windows 11 25H2 (build 26200) machine "ASTERXSK". To kill Microsoft Store app recommendations in the taskbar/Start search (they persist despite search-settings toggles being off), a Deny (Everyone, FullControl) ACE was set on %LocalAppData%\Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalState\store.db. Revert by removing that ACE.

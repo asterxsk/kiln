@@ -48,7 +48,7 @@ cp kiln/agent/{AGENTS.md,keybindings.json,settings.json} ~/.pi/agent/
 - **Curated extensions** — fifteen self-contained pi extensions, each with its own `package.json` and installer. No global dependency soup.
 - **Safe installer** — public HTTPS clone, atomic overwrites, narrow backups of only the files it replaces. Your config is never collateral damage.
 - **Compact-first UX** — `pi-compact-tools` (Claude / Codex / Compact tool rows), `theme: github-dark-pro`, fullscreen TUI, high thinking by default. Built for long sessions.
-- **Versioned memory** — the global cross-session memory stores ride along with the repo (see [Memory](#memory)).
+- **Cross-session memory** — bounded global + project memory, with automatic end-of-turn reflection (see [Memory](#memory)).
 - **Secret-free by construction** — `auth.json`, `sessions/`, `trust.json`, `models-store.json`, `bin/`, and `themes/.pi` are `.gitignore`'d. The repo holds config, never credentials.
 - **Cross-platform** — one Node installer for macOS, Linux, and Windows.
 
@@ -89,7 +89,7 @@ Each pair is one markdown file — `MEMORY.md` / `USER.md` — under `~/.pi/agen
 
 When a turn finishes having done real work, the extension also gives the **same** agent one extra request to review the conversation and save anything durable through the `memory` tool — memory accumulates without you asking. A pure Q&A turn is skipped, and each turn reflects at most once, so it can't loop. Toggle it with `/memory-auto on|off`.
 
-**Global stores are tracked in this repo** at `agent/memories/{MEMORY.md,USER.md}`, so git gives them history and a home. Project-scoped stores stay with their project. The installer copies extensions and config, not your notes — restore those two files from the repo when you want them on a new machine.
+Global stores live at `~/.pi/agent/memories/` and project stores at `<project>/.pi/memories/`. These are personal and local: kiln neither tracks nor installs them, so keep them in your own backup.
 
 ---
 
@@ -144,11 +144,10 @@ The house rules, merged into every session: *think before coding*, *simplicity f
     ├── compact-tools.json  # tool-row style (defaults to codex)
     ├── keybindings.json    # TUI keybindings
     ├── version.txt         # install version (drives kiln-update)
-    ├── memories/           # global memory stores (MEMORY.md, USER.md)
     └── extensions/         # self-contained pi extensions
 ```
 
-Only `agent/extensions`, `agent/memories`, the `agent/*.md` / `agent/*.json` config, `agent/version.txt`, `bin/kiln.js`, and the root docs are tracked. Everything else — secrets, sessions, caches, install scratch — stays local.
+Only `agent/extensions`, the `agent/*.md` / `agent/*.json` config, `agent/version.txt`, `bin/kiln.js`, and the root docs are tracked. Everything else — secrets, sessions, memories, caches, install scratch — stays local.
 
 ---
 
