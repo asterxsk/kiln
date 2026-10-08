@@ -3,6 +3,6 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"test": "node --test --experimental-strip-types src/store.test.ts src/prompt.test.ts src/paths.test.ts"
+		"test": "node --test --experimental-strip-types src/store.test.ts src/prompt.test.ts src/paths.test.ts src/reflect.test.ts"
 	}
 }

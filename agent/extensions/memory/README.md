@@ -90,11 +90,22 @@ memory(action, scope, target?, content?, old_text?)
 The tool returns an error instead of silently dropping entries, so the agent makes
 room in the same turn (consolidating or removing) and retries.
 
+## Reflection
+
+When a user turn finishes having done real work — at least one tool call other
+than `memory`, and no memory written during the run — the extension gives the
+**same agent** one extra request to review the conversation and save anything
+durable through the `memory` tool. It is the same session and context, not a
+subagent. A pure Q&A turn is skipped, and each user turn reflects at most once,
+so the injected continuation cannot loop. The nudge itself is a hidden custom
+message (`display: false`); the system-prompt snapshot stays frozen.
+
 ## Command
 
 | Command | Action |
 |---|---|
 | `/memory` | Show usage and entry counts for all four stores. |
+| `/memory-auto on\|off` | Toggle end-of-response reflection for the session (default on). |
 
 ## Layout
 
@@ -106,7 +117,8 @@ memory/
   src/paths.ts      project-root discovery (nearest .git) + project memory dir
   src/prompt.ts     Hermes-style banner + § rendering
   src/tool.ts       the memory tool definition
-  src/*.test.ts     unit tests for the store, renderer, and path resolver
+  src/reflect.ts    end-of-response reflection gate + injected instruction
+  src/*.test.ts     unit tests for the store, renderer, path resolver, and gate
   install.sh/.ps1   per-extension dependency installer
 ```
 
